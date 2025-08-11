@@ -4,21 +4,24 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const path = require('path'); // ✅ added
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../build')));
+
+// Serve React frontend in production
+app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../build', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const User = require('./models/Users');
 const connectDB = require('./database');
+
+// Example API endpoint
 app.get('/get-user', async (req, res) => {
   const { email, phone } = req.query;
-
-  console.log('GET /get-user called with:', { email, phone });
 
   if (!email || !phone) {
     return res.status(400).json({ error: "Email and phone are required" });
@@ -26,7 +29,6 @@ app.get('/get-user', async (req, res) => {
 
   try {
     const user = await User.findOne({ email, phone: phone.toString() });
-    console.log('Found user:', user);
     if (user) {
       return res.json({ user, message: "User already exists" });
     }
@@ -37,9 +39,7 @@ app.get('/get-user', async (req, res) => {
   }
 });
 
-
-
-// Register user with hashed password
+// Register user
 app.post('/register', async (req, res) => {
   const { name, email, password, phone } = req.body;
   if (!name || !email || !password || !phone) {
@@ -47,7 +47,6 @@ app.post('/register', async (req, res) => {
   }
 
   try {
-    // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: "User already exists" });
@@ -64,7 +63,6 @@ app.post('/register', async (req, res) => {
 
     await newUser.save();
 
-    // Create JWT token
     const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '1h' });
 
     res.status(201).json({
@@ -77,7 +75,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// Login validation with password check
+// Login
 app.post('/valid-login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -108,9 +106,10 @@ app.post('/valid-login', async (req, res) => {
   }
 });
 
-// Start server only after DB connects
+// Start server after DB connects
 connectDB().then(() => {
-  app.listen(5000, () => {
-    console.log("Server listening on port 5000");
+  const PORT = process.env.PORT || 5000; // ✅ dynamic port for Azure
+  app.listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
   });
 });
