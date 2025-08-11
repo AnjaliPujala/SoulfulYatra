@@ -20,15 +20,15 @@ jobs:
         with:
           node-version: '22.x'
 
-      # Install frontend dependencies & build React
+      # Install frontend dependencies & build React app
       - name: Install frontend dependencies
         run: npm install
 
       - name: Build React app
         run: npm run build
 
-      # Move frontend build into backend/public
-      - name: Move React build to backend
+      # Move React build output into backend/public folder
+      - name: Move React build to backend/public
         run: |
           rm -rf backend/public
           mv build backend/public
@@ -40,12 +40,12 @@ jobs:
           npm install --production
           cd ..
 
-      # Upload for deployment
+      # Upload whole repo root (including backend folder with React build inside)
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: app
-          path: backend
+          path: .
 
   deploy:
     runs-on: ubuntu-latest
@@ -66,12 +66,11 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}          
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'SoulfulYatra'
           slot-name: 'Production'
-          package: .
-
+          package: ./backend   # Deploy from backend folder
