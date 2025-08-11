@@ -27,6 +27,12 @@ jobs:
       - name: Build React app
         run: npm run build
 
+      # Move React build into backend folder
+      - name: Move React build to backend
+        run: |
+          rm -rf backend/build
+          mv build backend/
+
       # Install backend dependencies
       - name: Install backend dependencies
         run: |
@@ -60,7 +66,7 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          auth-type: IDENTITY
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
