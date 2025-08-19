@@ -1,0 +1,90 @@
+/* Container for the whole page */
+.plan-trip{
+    background-color: #087695;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Heading */
+.plan-trip h2 {
+  text-align: center;
+  color: white;
+  margin-bottom: 20px;
+}
+
+/* Error messages */
+.plan-trip-error {
+  color: red;
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+/* Form layout */
+.plan-trip-form {
+    background-color:#222;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 50px;
+    color: white;
+    border-radius: 10px;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.9);
+}
+
+
+.plan-trip-form label {
+  display: flex;
+  flex-direction: column;
+  font-weight: 500;
+}
+
+.plan-trip-form input {
+  padding: 10px;
+  margin-top: 5px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 14px;
+}
+.plan-trip-form input:focus {
+    outline: none;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.9);
+}
+
+.plan-trip-form button {
+    padding: 10px 20px;
+    border-radius: 5px;
+    border: none;
+    background-color: #f4c93a;
+    color: white;
+    cursor: pointer;
+    width: 200px;
+    align-items: center;
+    align-self: center;
+}
+
+.plan-trip-form button:hover {
+    background-color: #f5f9fa;
+    color: black;
+}
+
+/* Itinerary output */
+.itinerary-container {
+  margin-top: 30px;
+}
+
+.itinerary-container h3 {
+  color: white;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.itinerary-pre {
+  white-space: pre-wrap;
+  padding: 20px;
+  border-radius: 10px;
+  line-height: 1.6;
+  font-size: 14px;
+  color: white;
+}

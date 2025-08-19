@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import '../styles/Login.css';
 import appLogo from '../assets/app-icon.jpg'; // Adjust the path as necessary
 import { useNavigate } from 'react-router-dom';
@@ -8,7 +8,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const navigate = useNavigate();
-
+  useEffect(() => {
+    
+    const token = localStorage.getItem('token');
+    if (token) {
+      navigate('/home'); 
+    }
+  }, [navigate]);
   const validLogin = (e) => {
     e.preventDefault();
     setErrorMessage(''); // Reset errors

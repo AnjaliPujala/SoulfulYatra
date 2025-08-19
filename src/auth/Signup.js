@@ -53,7 +53,7 @@ export default function Signup() {
         } else if (data.message) {
           setErrorMessage(data.message);
           if(data.message === "User already exists") {
-            alert("User already exists. Please log in.");
+            
           }else{
             sendEmail(email,name,"Your OTP for SoulfulYatra Signup",`Dear ${name},\nYour OTP is ${otp}\nPlease use this OTP to complete your registration.\nThank you for choosing SoulfulYatra!`);
             navigate('/verify-otp', {

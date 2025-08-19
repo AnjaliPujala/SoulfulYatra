@@ -1,21 +1,37 @@
-body {
-  margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f9f9f9;
-}
-
-/* Container */
 .signup-container {
-  min-height: 100vh;
+  position: relative;
   display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  background: none; /* remove any direct background */
+}
+
+/* Blurred, darkened background */
+.signup-container::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)),
+    url("../assets/temple.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(1px);
+  z-index: -1; /* place behind all content */
+}
+
+.signup-container > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Card */
 .signup-card {
-  background: white;
+  background-color: rgba(255, 255, 255, 0.7);
   border-radius: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   padding: 30px;
@@ -37,7 +53,7 @@ body {
   text-align: center;
   font-size: 1.8rem;
   font-weight: bold;
-  color: #77BEF0;
+  color: #58b7fb;;
 }
 
 .signup-subtitle {
@@ -75,7 +91,7 @@ body {
 /* Button */
 .signup-btn {
   width: 100%;
-  background-color: #FFCB61;
+  background-color: #fec045;
   color: white;
   font-size: 1rem;
   font-weight: bold;
@@ -87,7 +103,7 @@ body {
 }
 
 .signup-btn:hover {
-  background-color: #e6b24f;
+  background-color: #171001;
 }
 
 /* Footer text */

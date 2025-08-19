@@ -10,7 +10,7 @@ const WalkingPerson = () => {
         loop
         muted
         playsInline
-        style={{ width: '50px', maxWidth: '80vw', borderRadius: '12px' }}
+        style={{ width: '50px', maxWidth: '80vw', borderRadius: '12px', margin: '10px', display: 'block' }}
       />
     </div>
   );

@@ -1,0 +1,175 @@
+/*.home-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: none;
+}
+
+
+.home-container::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)),
+    url("../assets/all-in-one.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(1px);
+  z-index: -1; 
+  #0d7eaf
+}
+*/
+.home-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  
+}
+
+
+.home-content{
+  position: relative;
+  display: flex;
+  
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  /*background-color: #f6c31d ;*/
+  background-color: #087695;
+}
+
+.home-content h1 {
+  font-size: 48px;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.home-content p {
+  font-size: 14px;
+  color: #fff;
+  text-align: center;
+
+  margin-top: 5px;
+}
+
+.states-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 30px;
+  padding: 20px;
+}
+
+.state-card {
+  flex: 1 1 calc(33.333% - 40px);
+  max-width: 300px; 
+  background: #222; 
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.state-card h2 {
+  font-size: 24px;
+  color: #fff;
+  margin-bottom: 10px;
+}
+.place-image {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+}
+.place-name {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 10px 0;
+  color: #000000;
+}
+.place-description {
+  font-size: 14px;
+  color: #000000;
+  margin-bottom: 10px;
+}
+.nav-buttons button{
+    text-decoration: none;
+    background-color: #f4c93a;
+    padding: 10px 20px;
+    border-radius: 5px;
+    color: white;
+    border: 1px solid #f5f9fa;
+    
+}
+.nav-buttons button:hover {
+  background-color: #f5f9fa;
+  color: black;
+}
+.nav-buttons {
+  margin: 10px;
+}
+.nav-buttons button{
+  margin: 2px;
+}
+
+
+/* Responsive Design where a collapse symbol when user click on that it should show these list*/
+
+
+
+.menu-toggle {
+  display: none;
+  font-size: 28px;
+  cursor: pointer;
+  user-select: none;
+}
+
+@media screen and (max-width: 768px) {
+  #nav-list {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+  }
+  #nav-list.show {
+    display: flex;
+  }
+  .menu-toggle {
+    display: block;
+    font-size: 28px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .nav ul li {
+    margin-bottom: 10px;
+    text-align: center;
+  }
+}
+.places-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.place-card {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  background: #fff;
+  width: 250px;
+  text-align: center;
+}
+
+.place-image {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+}
+
