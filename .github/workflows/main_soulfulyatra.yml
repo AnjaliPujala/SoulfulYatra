@@ -20,21 +20,27 @@ jobs:
         with:
           node-version: '22.x'
 
-      # Install frontend dependencies & build React
+      # Install frontend dependencies & build React app
       - name: Install frontend dependencies
         run: npm install
 
       - name: Build React app
         run: npm run build
 
+      # Move React build output into backend/public folder
+      - name: Move React build to backend/public
+        run: |
+          rm -rf backend/public
+          mv build backend/public
+
       # Install backend dependencies
       - name: Install backend dependencies
         run: |
           cd backend
-          npm install
+          npm install --production
           cd ..
 
-      # Upload everything for deploy step
+      # Upload whole repo root (including backend folder with React build inside)
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -67,4 +73,4 @@ jobs:
         with:
           app-name: 'SoulfulYatra'
           slot-name: 'Production'
-          package: .
+          package: ./backend   # Deploy from backend folder

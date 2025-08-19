@@ -4,14 +4,20 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+<<<<<<< HEAD
 const path = require('path'); 
 const util = require('util');
+=======
+const path = require('path'); // ✅ added
+
+>>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
 const app = express();
 const fetch = require('node-fetch');
 const OpenAI = require('openai');
 app.use(cors());
 app.use(express.json());
 
+<<<<<<< HEAD
 
 let db;
 const connectDB = async () => {
@@ -33,6 +39,18 @@ const User = require('./models/Users');
 
 
 // get user by email and phone
+=======
+// Serve React frontend in production
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const User = require('./models/Users');
+const connectDB = require('./database');
+
+// Example API endpoint
+>>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
 app.get('/get-user', async (req, res) => {
   const { email, phone } = req.query;
 
@@ -41,7 +59,11 @@ app.get('/get-user', async (req, res) => {
   }
 
   try {
+<<<<<<< HEAD
     const user = await User.findOne({ email});
+=======
+    const user = await User.findOne({ email, phone: phone.toString() });
+>>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
     if (user) {
       return res.json({ user, message: "User already exists" });
     }
@@ -138,6 +160,7 @@ async function getLatLonFromName(name) {
   };
 }
 
+<<<<<<< HEAD
 //get places from mongodb
 app.get('/get-places',async(req,res)=>{
   try{
@@ -280,6 +303,8 @@ Include daily schedule, travel tips, and approximate durations.
 });
 
 
+=======
+>>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
 // Start server after DB connects
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000; // ✅ dynamic port for Azure
