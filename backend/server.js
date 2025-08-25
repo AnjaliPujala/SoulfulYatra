@@ -34,6 +34,7 @@ const connectDB = async () => {
   }
 };
 
+
 // User model
 const User = require('./models/Users');
 
@@ -292,7 +293,7 @@ app.get('/get-places-by-name', async (req, res) => {
 
 
 // ------------------- ITINERARY -------------------
-const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.post('/generate-itinerary', async (req, res) => {
   try {
@@ -388,19 +389,19 @@ app.post('/save-trip', async (req, res) => {
     const decoded = jwt.verify(token, process.env.TOKEN_KEY);
     const email = decoded.email;
 
-    const { destination, interests, tripData,days } = req.body;
+    const { destination, interests, tripData, days } = req.body;
     const daysNumber = Number(days);
-    if (!destination || !tripData) 
+    if (!destination || !tripData)
       return res.status(400).json({ error: 'Destination and trip data are required' });
 
-    
-    const existingTrip = await SavedTrip.findOne({ email, destination,days:daysNumber });
+
+    const existingTrip = await SavedTrip.findOne({ email, destination, days: daysNumber });
     if (existingTrip) {
       return res.status(400).json({ error: 'This trip is already saved!' });
     }
 
-    
-    await SavedTrip.create({ email, destination,days:daysNumber, interests, tripData });
+
+    await SavedTrip.create({ email, destination, days: daysNumber, interests, tripData });
 
     res.json({ message: 'Trip saved successfully' });
   } catch (err) {
@@ -411,7 +412,7 @@ app.post('/save-trip', async (req, res) => {
 //profile
 app.get('/profile', async (req, res) => {
   try {
-    const token = req.cookies.token; 
+    const token = req.cookies.token;
     if (!token) return res.status(401).json({ error: "No token provided" });
     const decoded = jwt.verify(token, process.env.TOKEN_KEY);
     const user = await User.findOne({ email: decoded.email }).select('-password');
@@ -442,4 +443,5 @@ app.get("/get-saved-trips", async (req, res) => {
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-});
+}).catch(err => console.error(err));
+

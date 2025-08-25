@@ -1,24 +1,31 @@
 {
   "name": "backend",
   "version": "1.0.0",
+  "description": "Backend server for my project",
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build": "npm run clean && npm run compile-ts && npm run minify-js",
+    "clean": "rm -rf dist",
+    "compile-ts": "tsc",
+    "minify-js": "terser dist/*.js -o dist/server.min.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "Anjali Pujala",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "axios": "^1.11.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "node-fetch": "^2.7.0",
-    "openai": "^5.12.2",
-    "socket.io": "^4.8.1",
-    "twilio": "^5.8.0"
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "terser": "^5.31.0",
+    "typescript": "^5.5.4"
   }
 }
