@@ -1,0 +1,137 @@
+.profile-container{
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: linear-gradient(270deg, #087695, #4fc1e9, #6fcf97, #087695);
+    background-size: 800% 800%;
+    animation: gradientAnimation 15s ease infinite;
+}
+
+@keyframes gradientAnimation {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.profile-heading {
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: 20px;
+  color: #fff;
+}
+
+.profile-subheading {
+  margin: 20px 0;
+  font-size: 1.5rem;
+  text-align: left;
+  color: #fff;
+}
+
+/* Grid stays centered */
+.saved-trips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 30px;
+  justify-items: center;  
+  width: 100%;
+  max-width: 1100px;
+  margin: 20px auto;
+}
+
+
+.saved-trip-card {
+  flex: 1 1 calc(33.333% - 40px);
+  max-width: 300px; 
+  background: #222; 
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+ 
+}
+
+.saved-trip-card:hover {
+  transform: translateY(-8px) scale(1.02); 
+  box-shadow: 0px 10px 18px rgba(0,0,0,0.2);
+}
+
+.view-btn{
+    padding: 10px 20px;
+    border-radius: 5px;
+    border: none;
+    background-color: #f4c93a;
+    color: white;
+    cursor: pointer;
+    width: 200px;
+    align-items: center;
+    align-self: center;
+}
+
+.view-btn:hover {
+    background-color: #f5f9fa;
+    color: black;
+}
+
+
+.trip-details {
+  margin: 15px auto 30px auto;  
+  background: #f3f4f6;
+  padding: 20px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  width: 90%;             
+  max-width: 700px;       
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  animation: fadeIn 0.3s ease;
+  text-align: left;
+}
+
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .saved-trips-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2 cards per row on tablets */
+    gap: 25px;
+  }
+  .trip-details {
+    width: 95%;
+    max-width: 600px; /* keep details centered */
+  }
+}
+
+@media (max-width: 768px) {
+  .saved-trips-grid {
+    grid-template-columns: 1fr 1fr; /* 2 per row */
+    gap: 20px;
+  }
+  .saved-trip-card {
+    max-width: 100%;
+  }
+  .trip-details {
+    width: 95%;
+    max-width: 500px;
+  }
+}
+
+@media (max-width: 480px) {
+  .saved-trips-grid {
+    grid-template-columns: 1fr; 
+  }
+  .saved-trip-card {
+    max-width: 90%;
+  }
+  .trip-details {
+    width: 95%;
+    max-width: 380px;
+  }
+}

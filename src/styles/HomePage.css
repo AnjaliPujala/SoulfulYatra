@@ -32,16 +32,20 @@
   
 }
 
-
 .home-content{
-  position: relative;
-  display: flex;
-  
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  /*background-color: #f6c31d ;*/
-  background-color: #087695;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: linear-gradient(270deg, #087695, #4fc1e9, #6fcf97, #087695);
+    background-size: 800% 800%;
+    animation: gradientAnimation 15s ease infinite;
+}
+
+@keyframes gradientAnimation {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 
 .home-content h1 {

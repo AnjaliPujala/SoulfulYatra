@@ -127,3 +127,76 @@
   margin-bottom: 10px;
   font-size: 0.9rem;
 }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .signup-card {
+    max-width: 90%;   /* shrink card for tablets */
+    padding: 20px;
+  }
+
+  .signup-title {
+    font-size: 1.5rem;
+  }
+
+  .signup-subtitle {
+    font-size: 0.85rem;
+  }
+
+  .signup-form input {
+    font-size: 0.9rem;
+    padding: 9px 12px;
+  }
+
+  .signup-btn {
+    font-size: 0.95rem;
+    padding: 9px 0;
+  }
+
+  .error-message {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .signup-container {
+    padding: 10px;
+  }
+
+  .signup-card {
+    max-width: 100%;   /* full width on small screens */
+    border-radius: 12px;
+    padding: 15px;
+  }
+
+  .signup-logo {
+    width: 50px;
+    height: 50px;
+  }
+
+  .signup-title {
+    font-size: 1.3rem;
+  }
+
+  .signup-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .signup-form input {
+    font-size: 0.85rem;
+    padding: 8px 10px;
+  }
+
+  .signup-btn {
+    font-size: 0.9rem;
+    padding: 8px 0;
+  }
+
+  .signup-footer {
+    font-size: 0.8rem;
+  }
+
+  .error-message {
+    font-size: 0.8rem;
+  }
+}

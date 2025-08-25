@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './Navbar';
 import '../styles/HomePage.css';
+import Footer from './Footer';
 
 export default function HomePage() {
   
@@ -67,10 +68,7 @@ export default function HomePage() {
 
   return (
     <div className='home-container'>
-      {/* Navbar */}
       <Navbar/>
-
-      {/* Main Content */}
       <div className='home-content'>
         <h1>Welcome to SoulfulYatra</h1>
         <p>Your journey to explore the world's most soulful places begins here.</p>
@@ -101,6 +99,7 @@ export default function HomePage() {
           <p>Loading places...</p>
         )}
       </div>
+      <Footer/>
     </div>
   );
 }

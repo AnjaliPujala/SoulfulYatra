@@ -1,0 +1,54 @@
+.famous-foods-content {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: linear-gradient(270deg, #087695, #4fc1e9, #6fcf97, #087695);
+    background-size: 800% 800%;
+    animation: gradientAnimation 15s ease infinite;
+}
+
+@keyframes gradientAnimation {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+.famous-foods-content h2{
+    color: #fff;
+}
+
+.error {
+  color: red;
+}
+.restaurants-loading-container{
+    color: #fff;
+    align-items: center;
+}
+.food-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 30px;
+  padding: 20px;
+}
+
+.food-card {
+  flex: 1 1 calc(33.333% - 40px);
+  max-width: 300px; 
+  background: #222; 
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.food-card h3{
+    font-size: 24px;
+    color: #fff;
+    margin-bottom: 10px;
+}
+
+.food-card p{
+    color: white;
+}

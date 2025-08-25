@@ -1,12 +1,19 @@
 /* Container for the whole page */
 .plan-trip{
-    background-color: #087695;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
+    background: linear-gradient(270deg, #087695, #4fc1e9, #6fcf97, #087695);
+    background-size: 800% 800%;
+    animation: gradientAnimation 15s ease infinite;
 }
 
+@keyframes gradientAnimation {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
 /* Heading */
 .plan-trip h2 {
   text-align: center;
@@ -74,17 +81,98 @@
   margin-top: 30px;
 }
 
-.itinerary-container h3 {
+.timeline {
+  display: flex;
+  flex-direction: column; /* keeps plan below the days */
+  align-items: center;
+  gap: 20px;
+}
+
+.timeline-days {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 40px;
+  margin: 20px 0;
+}
+
+/* Horizontal connecting line */
+.timeline-days::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background-color: white;
+  z-index: 0;
+}
+
+/* Circle day items */
+.timeline-day {
+  position: relative;
+  background-color: #f4c93a;
+  color: #222;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.timeline-day.active {
+  background-color: #033340;
   color: white;
-  margin-bottom: 10px;
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.9);
+}
+
+
+
+.timeline-plan {
+  flex: 1;
+  background: linear-gradient(270deg, #222, #042254, #222, #174702);
+  background-size: 800% 800%;
+  max-width: 80%;
+  min-width: 80%;
+  animation: pinkBlackGradient 12s ease infinite;
+  color: #ccc;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 30px;
+}
+
+@keyframes pinkBlackGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.itinerary-header{
+  align-self: center;
+  color: white;
+}
+
+.save-trip-container {
+  margin-bottom: 20px;
   text-align: center;
 }
 
-.itinerary-pre {
-  white-space: pre-wrap;
-  padding: 20px;
-  border-radius: 10px;
-  line-height: 1.6;
-  font-size: 14px;
+.save-trip-button {
+  background-color:#f4c93a;
   color: white;
+  padding: 10px 25px;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.save-trip-button:hover {
+  background-color:white;
+  color: black;
 }

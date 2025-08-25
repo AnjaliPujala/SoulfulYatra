@@ -2,54 +2,15 @@ import React, { useState } from "react";
 import "../styles/ExplorePlaces.css";
 import Navbar from "./Navbar";
 import WalkingPerson from "./WalkingPerson"; // Assuming this is a loading animation component
-
+import Footer from './Footer.js';
 export default function ExplorePlaces() {
-  const [stateQuery, setStateQuery] = useState("");
+
   const [placeQuery, setPlaceQuery] = useState("");
   const [matchedPlaces, setMatchedPlaces] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(false);
- const [error, setError] = useState("");
-  const [apiResult, setApiResult] = useState(null);
-  const indianStates = [
-    "Andhra Pradesh",
-    "Arunachal Pradesh",
-    "Assam",
-    "Bihar",
-    "Chhattisgarh",
-    "Goa",
-    "Gujarat",
-    "Haryana",
-    "Himachal Pradesh",
-    "Jharkhand",
-    "Karnataka",
-    "Kerala",
-    "Madhya Pradesh",
-    "Maharashtra",
-    "Manipur",
-    "Meghalaya",
-    "Mizoram",
-    "Nagaland",
-    "Odisha",
-    "Punjab",
-    "Rajasthan",
-    "Sikkim",
-    "Tamil Nadu",
-    "Telangana",
-    "Tripura",
-    "Uttar Pradesh",
-    "Uttarakhand",
-    "West Bengal",
-    "Delhi",
-    "Jammu & Kashmir",
-    "Ladakh",
-    "Puducherry",
-    "Chandigarh",
-    "Daman & Diu",
-    "Dadra & Nagar Haveli",
-    "Lakshadweep",
-    "Andaman & Nicobar Islands"
-  ];
+
+  
   const formatAddress = (addr) => {
     if (!addr) return "No address available";
     const { city, state, suburb, country, postcode } = addr;
@@ -58,8 +19,7 @@ export default function ExplorePlaces() {
 
   const handleSearch = async () => {
     setLoading(true);
-    setError("");
-    setApiResult(null);
+    
 
     try {
       const response = await fetch(`http://localhost:5000/get-places-by-name?name=${encodeURIComponent(placeQuery)}`);
@@ -71,16 +31,15 @@ export default function ExplorePlaces() {
       const data = await response.json();
 
       if (data.error) {
-        setError(data.error);
+        console.log(data.error);
       } else {
-        console.log("API Result:", data.places[0].properties.name);
-        setApiResult(data); 
+        
         fetchPlaces(data.places);
       }
 
     } catch (err) {
       console.error('Error fetching place:', err);
-      setError('Failed to fetch place. Please try again.');
+      
     } finally {
       setLoading(false);
     }
@@ -153,7 +112,7 @@ const fetchPlaces = async (places) => {
                     <p>{place.address}</p>
                     <p>{place.description}</p>
                     
-                    <button className="see-more-btn">See More</button>
+                    {/*<button className="see-more-btn">See More</button>*/}
                   </div>
                 </div>
               )
@@ -166,7 +125,7 @@ const fetchPlaces = async (places) => {
 
 
       </div>
-      
+      <Footer/>
     </div>
   );
 }

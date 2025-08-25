@@ -4,278 +4,304 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-<<<<<<< HEAD
-const path = require('path'); 
-const util = require('util');
-=======
-const path = require('path'); // ✅ added
-
->>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
-const app = express();
+const cookieParser = require('cookie-parser');
 const fetch = require('node-fetch');
 const OpenAI = require('openai');
-app.use(cors());
+const SavedTrip = require('./models/SavedTrip');
+const app = express();
+
+// Middleware
 app.use(express.json());
+app.use(cookieParser());
+app.use(cors({
+  origin: 'http://localhost:3000', // React app origin
+  credentials: true
+}));
 
-<<<<<<< HEAD
-
+// MongoDB connection
 let db;
 const connectDB = async () => {
   try {
-    const client=await mongoose.connect(process.env.MONGO_URI, {
+    const client = await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true,
+      useUnifiedTopology: true
     });
-    console.log('Connected to database');
-    db= client.connection.db; 
+    console.log('Connected to MongoDB');
+    db = client.connection.db;
   } catch (error) {
     console.error('MongoDB connection error:', error);
     throw error;
   }
 };
 
-
+// User model
 const User = require('./models/Users');
 
-
-// get user by email and phone
-=======
-// Serve React frontend in production
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-const User = require('./models/Users');
-const connectDB = require('./database');
-
-// Example API endpoint
->>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
-app.get('/get-user', async (req, res) => {
-  const { email, phone } = req.query;
-
-  if (!email || !phone) {
-    return res.status(400).json({ error: "Email and phone are required" });
-  }
+// ------------------- AUTH -------------------
+app.get('/check-auth', (req, res) => {
+  const token = req.cookies.token;
+  if (!token) return res.json({ loggedIn: false });
 
   try {
-<<<<<<< HEAD
-    const user = await User.findOne({ email});
-=======
-    const user = await User.findOne({ email, phone: phone.toString() });
->>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
-    if (user) {
-      return res.json({ user, message: "User already exists" });
-    }
-    const userByPhone = await User.findOne({phone: phone.toString() });
-    if (userByPhone) {
-      return res.json({ user: userByPhone, message: "User already exists with this phone number" });
-    }
-    return res.json({ message: "User not found" });
-  } catch (error) {
-    console.error("Error fetching user:", error.stack);
-    return res.status(500).json({ error: "Server error", details: error.message });
+    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+    return res.json({ loggedIn: true, email: decoded.email });
+  } catch (err) {
+    return res.json({ loggedIn: false });
   }
 });
 
-// Register user
+// Register
 app.post('/register', async (req, res) => {
   const { name, email, password, phone } = req.body;
   if (!name || !email || !password || !phone) {
     return res.status(400).json({ error: "All fields are required" });
   }
-
   try {
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: "User already exists" });
-    }
+    if (existingUser) return res.status(400).json({ error: "User already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-    });
-
+    const newUser = new User({ name, email, phone, password: hashedPassword });
     await newUser.save();
 
     const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '1h' });
 
     res.status(201).json({
       user: { name, email, phone },
-      token,
+      token
     });
   } catch (error) {
-    console.error("Error registering user:", error);
+    console.error("Register error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
+let otpStore = {}; // { email: { otp: 123456, expires: Date } }
 
-// Login
-app.post('/valid-login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required" });
+// ------------------- Endpoints -------------------
+
+// Save OTP in backend
+app.post('/forgot-password', async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and OTP are required' });
   }
+
+  try {
+    const user = await User.findOne({ email: email });
+    if (!user) return res.status(400).json({ error: 'Email not registered' });
+
+    otpStore[email] = { otp: parseInt(otp), expires: Date.now() + 10 * 60 * 1000 }; // 10 mins
+    res.json({ message: 'OTP saved on server' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reset Password using OTP
+app.post('/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword)
+    return res.status(400).json({ error: 'Email, OTP and new password are required' });
+
+  const record = otpStore[email];
+  if (!record) return res.status(400).json({ error: 'No OTP request found' });
+
+  if (Date.now() > record.expires) {
+    delete otpStore[email];
+    return res.status(400).json({ error: 'OTP expired. Try again' });
+  }
+
+  if (parseInt(otp) !== record.otp)
+    return res.status(400).json({ error: 'Invalid OTP' });
 
   try {
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: "User not found" });
-    }
+    if (!user) return res.status(400).json({ error: 'User not found' });
+
+    // Hash the new password before saving
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+
+    await user.save();
+    delete otpStore[email];
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error while resetting password' });
+  }
+});
+// Login
+app.post('/valid-login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: "User not found" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Invalid password" });
-    }
+    if (!isMatch) return res.status(400).json({ error: "Invalid password" });
 
     const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '1h' });
 
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 3600000
+    });
+
     res.json({
       message: "Login successful",
-      user: { name: user.name, email: user.email, phone: user.phone },
-      token,
+      user: { name: user.name, email: user.email, phone: user.phone }
     });
-  } catch (error) {
-    console.error("Error validating login:", error);
-    res.status(500).json({ error: "Server error" });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Server error during login" });
   }
 });
-//get places
+
+
+// Token validation
+const validateToken = (token) => {
+  try { return jwt.verify(token, process.env.TOKEN_KEY); }
+  catch { return null; }
+};
+
+//logout
+app.post('/logout', (req, res) => {
+  res.cookie('token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0 // expire immediately
+  });
+  res.json({ message: 'Logged out successfully' });
+});
+// Protected route example
+app.get('/home', (req, res) => {
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+  const decoded = validateToken(token);
+  if (!decoded) return res.status(401).json({ error: "Invalid token" });
+
+  res.json({ message: "Welcome home!", email: decoded.email });
+});
+
+// ------------------- PLACES -------------------
 async function getLatLonFromName(name) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(name)}&limit=1`;
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'PlaceFinder/1.0 (anjalipujala001@gmail.com)' }
-  });
+  const response = await fetch(url, { headers: { 'User-Agent': 'PlaceFinder/1.0 (anjalipujala001@example.com)' } });
   if (!response.ok) throw new Error('Failed to fetch from Nominatim');
   const data = await response.json();
   if (data.length === 0) return null;
-  return {
-    lat: parseFloat(data[0].lat),
-    lon: parseFloat(data[0].lon),
-    boundingbox: data[0].boundingbox 
-  };
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), boundingbox: data[0].boundingbox };
 }
 
-<<<<<<< HEAD
-//get places from mongodb
-app.get('/get-places',async(req,res)=>{
-  try{
-    const collection=db.collection('places'); 
-    const places=await collection.find({}).toArray();
-    if(places.length === 0) {
-      return res.status(404).json({ message: 'No places found' });
-    }
-    return res.status(200).json({ places });
-  }catch(err){
-    console.error('Error fetching places:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-})
-
-//get place by state from open trip map api
-
-app.get('/get-places-by-name', async (req, res) => {
-  const { name } = req.query;
-  if (!name) {
-    return res.status(400).json({ error: 'State name is required' });
-  } 
+// Get places from MongoDB
+let placesCache = null;
+app.get('/get-places', async (req, res) => {
+  if (placesCache) return res.json({ places: placesCache });
   try {
-    const places = await getPlacesByName(name);
-    if (places.length === 0) {
-      return res.status(404).json({ message: 'No places found' });
-    }
-    res.status(200).json({ places });
-  } catch (error) {
-    console.error('Error fetching places by state:', error);
+    const collection = db.collection('places');
+    const places = await collection.find({}).toArray();
+    if (!places.length) return res.status(404).json({ message: 'No places found' });
+    placesCache = places;
+    res.json({ places });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
-
+// Get places by state using OpenTripMap
 async function getPlacesByName(name) {
   const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
-  const geocodeData = await getLatLonFromName(name);
+  if (!apiKey) throw new Error('OpenTripMap API key is missing');
 
+  const geocodeData = await getLatLonFromName(name);
   if (!geocodeData) return [];
 
   const [lat_min, lat_max, lon_min, lon_max] = geocodeData.boundingbox.map(Number);
 
   const url = `https://api.opentripmap.com/0.1/en/places/bbox?lon_min=${lon_min}&lat_min=${lat_min}&lon_max=${lon_max}&lat_max=${lat_max}&apikey=${apiKey}&limit=50`;
 
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Failed to fetch places');
-
-  const data = await response.json();
-  return data.features || [];
-}
-
-
-
-
-//fetch place images by xid
-app.get('/get-place-image', async (req, res) => {
-  const { xid } = req.query;
-  if (!xid) {
-    return res.status(400).json({ error: 'XID is required' });
-  }
-
   try {
-    const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
-    const url = `https://api.opentripmap.com/0.1/en/places/xid/${xid}?apikey=${apiKey}`;
     const response = await fetch(url);
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      return res.status(response.status).json({ error: errorData.error || 'Failed to fetch place' });
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.error('Failed to parse JSON from OpenTripMap:', text);
+      return [];
     }
 
-    const data = await response.json();
+    return data.features || [];
+  } catch (err) {
+    console.error('Error fetching places:', err);
+    return [];
+  }
+}
+// get-place-image
+app.get('/get-place-image', async (req, res) => {
+  const { xid } = req.query;
+  const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
 
-    // Send the preview image if available
-    if (data) {
-      res.json({ data});
-    } else {
-      res.status(404).json({ error: 'Image not found for this place' });
+  if (!xid) return res.status(400).json({ error: 'XID is required' });
+
+  try {
+    const response = await fetch(`https://api.opentripmap.com/0.1/en/places/xid/${xid}?apikey=${apiKey}`);
+    const text = await response.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.error(`Invalid JSON for XID ${xid}:`, text);
+      return res.status(404).json({ error: 'Place not found or no data available' });
     }
-  } catch (error) {
-    console.error('Error fetching place image:', error);
+
+    res.json({ data });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// API endpoint
+app.get('/get-places-by-name', async (req, res) => {
+  const { name } = req.query;
+  if (!name) return res.status(400).json({ error: 'State name is required' });
+
+  try {
+    const places = await getPlacesByName(name);
+    if (!places.length) return res.status(404).json({ message: 'No places found' });
+    res.json({ places });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
 
-// Generate itinerary
-const openai = new OpenAI({
-  apiKey: process.env.OPEN_AI_API,
-});
-
-
-function validateToken(token) {
-  try {
-    // This will throw an error if token is invalid or expired
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    return decoded; // contains the payload, e.g., { email, iat, exp }
-  } catch (err) {
-    return null; // invalid token
-  }
-}
+// ------------------- ITINERARY -------------------
+const openai = new OpenAI({ apiKey: process.env.OPEN_AI_API });
 
 app.post('/generate-itinerary', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-
-    const token = authHeader.split(' ')[1];
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ error: 'No token provided' });
     if (!validateToken(token)) return res.status(401).json({ error: 'Invalid token' });
 
     const { destination, days, interests } = req.body;
-
-    if (!destination || !days) {
-      return res.status(400).json({ error: 'Destination and days are required' });
-    }
+    if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
 
     const prompt = `
 Plan a ${days}-day trip to ${destination} for a user interested in ${interests || 'general activities'}.
@@ -283,32 +309,137 @@ Provide the response in plain text only, without Markdown, asterisks, or headers
 Include daily schedule, travel tips, and approximate durations.
 `;
 
-
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are a helpful travel assistant.' },
-        { role: 'user', content: prompt },
+        { role: 'user', content: prompt }
       ],
-      max_tokens: 1000,
+      max_tokens: 1000
     });
 
     const itinerary = response.choices[0].message.content;
-
     res.json({ itinerary });
-  } catch (error) {
-    console.error(error);
+
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to generate itinerary' });
   }
 });
 
+// ------------------- HOTELS & FOODS -------------------
+const hotelsCache = {};
+const restaurantsCache = {};
 
-=======
->>>>>>> 9e9cadd91467a37f41aa099c2b8791bb0f88c70f
-// Start server after DB connects
+const fetchPlacesByRadius = async (lat, lon, radius, kinds, limit, cache) => {
+  const cacheKey = `${lat}-${lon}-${radius}-${kinds}`;
+  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < 10 * 60 * 1000) {
+    return cache[cacheKey].data;
+  }
+
+  const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
+  const url = `https://api.opentripmap.com/0.1/en/places/radius?radius=${radius}&lon=${lon}&lat=${lat}&kinds=${kinds}&limit=${limit}&apikey=${apiKey}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch ${kinds}`);
+  const data = await response.json();
+  cache[cacheKey] = { data: data.features || [], timestamp: Date.now() };
+  return cache[cacheKey].data;
+};
+
+app.get('/get-hotels', async (req, res) => {
+  const token = req.cookies.token;
+  if (!token || !validateToken(token)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { lat, lon, radius = 10000 } = req.query;
+  if (!lat || !lon) return res.status(400).json({ error: 'lat & lon required' });
+
+  try {
+    const hotels = await fetchPlacesByRadius(lat, lon, radius, 'accomodations,hostels,guest_houses,other_hotels', 50, hotelsCache);
+    res.json({ hotels });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch hotels' });
+  }
+});
+
+app.get('/famous-restaurants', async (req, res) => {
+  const token = req.cookies.token;
+  if (!token || !validateToken(token)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { lat, lon, radius = 10000 } = req.query;
+  if (!lat || !lon) return res.status(400).json({ error: 'lat & lon required' });
+
+  try {
+    const restaurants = await fetchPlacesByRadius(lat, lon, radius, 'foods', 10, restaurantsCache);
+    res.json({ restaurants });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch restaurants' });
+  }
+});
+//save trips
+
+
+app.post('/save-trip', async (req, res) => {
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+    const email = decoded.email;
+
+    const { destination, interests, tripData,days } = req.body;
+    const daysNumber = Number(days);
+    if (!destination || !tripData) 
+      return res.status(400).json({ error: 'Destination and trip data are required' });
+
+    
+    const existingTrip = await SavedTrip.findOne({ email, destination,days:daysNumber });
+    if (existingTrip) {
+      return res.status(400).json({ error: 'This trip is already saved!' });
+    }
+
+    
+    await SavedTrip.create({ email, destination,days:daysNumber, interests, tripData });
+
+    res.json({ message: 'Trip saved successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error saving trip' });
+  }
+});
+//profile
+app.get('/profile', async (req, res) => {
+  try {
+    const token = req.cookies.token; 
+    if (!token) return res.status(401).json({ error: "No token provided" });
+    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+    const user = await User.findOne({ email: decoded.email }).select('-password');
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.json({ user });
+  } catch (err) {
+    console.error("Profile fetch error:", err);
+    res.status(401).json({ error: "Unauthorized" });
+  }
+});
+//get saved trips
+app.get("/get-saved-trips", async (req, res) => {
+  try {
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+    const trips = await SavedTrip.find({ email: decoded.email });
+
+    res.json({ trips });
+  } catch (err) {
+    console.error("Error fetching saved trips:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+// ------------------- SERVER START -------------------
 connectDB().then(() => {
-  const PORT = process.env.PORT || 5000; // ✅ dynamic port for Azure
-  app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-  });
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 });
