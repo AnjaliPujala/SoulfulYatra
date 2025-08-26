@@ -195,9 +195,9 @@ const validateToken = (token) => {
 app.post('/logout', (req, res) => {
   res.cookie('token', '', {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'lax',
-    maxAge: 0 // expire immediately
+    secure: true,
+    sameSite: 'none',
+    maxAge: 0
   });
   res.json({ message: 'Logged out successfully' });
 });
