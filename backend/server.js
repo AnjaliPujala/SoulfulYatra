@@ -15,7 +15,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? 'https://yourfrontend.com'
+    ? 'https://soulful-yatra.netlify.app/'
     : 'http://localhost:3000',
   credentials: true
 }));
@@ -157,8 +157,8 @@ app.post('/valid-login', async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: isProd, // only true in production (HTTPS)
-      sameSite: isProd ? 'none' : 'lax', // 'none' for cross-site in prod, 'lax' locally
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 3600000
     });
 
