@@ -168,8 +168,8 @@ app.post('/valid-login', async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 3600000
     });
 
