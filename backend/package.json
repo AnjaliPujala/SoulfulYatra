@@ -3,29 +3,32 @@
   "version": "1.0.0",
   "description": "Backend server for my project",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "build": "npm run clean && npm run compile-ts && npm run minify-js",
     "clean": "rm -rf dist",
     "compile-ts": "tsc",
-    "minify-js": "terser dist/*.js -o dist/server.min.js"
+    "minify-js": "terser dist/*.js -o dist/server.min.js",
+    "build": "npm run clean && npm run compile-ts && npm run minify-js"
   },
   "keywords": [],
   "author": "Anjali Pujala",
   "license": "ISC",
+  "engines": {
+    "node": "18.x"
+  },
   "dependencies": {
     "axios": "^1.11.0",
+    "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "node-fetch": "^3.3.2",
-    "openai": "^4.85.1",
     "mongoose": "^8.10.0",
-    "bcrypt": "^5.1.1",
-    "dotenv": "^16.4.7"
+    "node-fetch": "^2.7.0",
+    "openai": "^4.85.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.0",
