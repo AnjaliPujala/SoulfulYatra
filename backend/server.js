@@ -14,9 +14,12 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
+  origin: process.env.NODE_ENV === 'production'
+    ? 'https://yourfrontend.com'
+    : 'http://localhost:3000',
   credentials: true
 }));
+
 
 // MongoDB connection
 let db;
@@ -136,6 +139,7 @@ app.post('/reset-password', async (req, res) => {
   }
 });
 // Login
+const isProd = process.env.NODE_ENV === 'production';
 app.post('/valid-login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Email and password required" });
@@ -149,12 +153,15 @@ app.post('/valid-login', async (req, res) => {
 
     const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '1h' });
 
+
+
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      secure: isProd, // only true in production (HTTPS)
+      sameSite: isProd ? 'none' : 'lax', // 'none' for cross-site in prod, 'lax' locally
       maxAge: 3600000
     });
+
 
     res.json({
       message: "Login successful",
@@ -177,8 +184,8 @@ const validateToken = (token) => {
 app.post('/logout', (req, res) => {
   res.cookie('token', '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 0 // expire immediately
   });
   res.json({ message: 'Logged out successfully' });
