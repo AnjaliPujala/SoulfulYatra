@@ -13,12 +13,23 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://soulful-yatra.netlify.app'
+];
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? 'https://soulful-yatra.netlify.app'
-    : 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // allow requests with no origin (like Postman or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(new Error('CORS not allowed for this origin'), false);
+    }
+    return callback(null, true);
+  },
   credentials: true
 }));
+
 
 
 // MongoDB connection
