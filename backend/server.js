@@ -15,7 +15,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? 'https://soulful-yatra.netlify.app/'
+    ? 'https://soulful-yatra.netlify.app'
     : 'http://localhost:3000',
   credentials: true
 }));
