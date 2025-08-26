@@ -14,7 +14,7 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-  origin: 'http://localhost:3000', // React app origin
+  origin: process.env.CORS_ORIGIN,
   credentials: true
 }));
 
@@ -152,7 +152,7 @@ app.post('/valid-login', async (req, res) => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'none',
       maxAge: 3600000
     });
 
