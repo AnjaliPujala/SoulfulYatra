@@ -321,7 +321,6 @@ Include daily schedule, travel tips, and approximate durations.
 
     const itinerary = response.choices[0].message.content;
     res.json({ itinerary });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate itinerary' });
