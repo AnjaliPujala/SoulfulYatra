@@ -183,6 +183,25 @@ app.post('/valid-login', async (req, res) => {
     res.status(500).json({ error: "Server error during login" });
   }
 });
+// Check if user exists by email or phone
+app.get('/get-user', async (req, res) => {
+  const { email, phone } = req.query;
+  if (!email || !phone) {
+    return res.status(400).json({ error: 'Email and phone required' });
+  }
+
+  try {
+    const user = await User.findOne({ $or: [{ email }, { phone }] }).select('-password');
+    if (user) {
+      return res.json({ message: 'User already exists', user });
+    } else {
+      return res.json({ message: 'User not found' });
+    }
+  } catch (err) {
+    console.error('Error fetching user:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 
 // Token validation
