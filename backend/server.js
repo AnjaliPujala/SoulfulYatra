@@ -109,7 +109,7 @@ app.post('/auth/oauth/session', async (req, res) => {
     // Set session cookie
     res.cookie('session_token', sessionToken, {
       httpOnly: true,
-      secure: false,//true
+      secure: process.env.NODE_ENV === 'production',//true
       sameSite: 'lax',//none
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
