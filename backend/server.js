@@ -6,13 +6,13 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const fetch = require('node-fetch');
-const OpenAI = require('openai');
 const SavedTrip = require('./models/SavedTrip');
 const app = express();
-
+const OpenAI = require('openai');
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
+
 const allowedOrigins = [
   'http://localhost:3000',
   'https://soulful-yatra.netlify.app'
@@ -20,7 +20,6 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (like Postman or curl)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
       return callback(new Error('CORS not allowed for this origin'), false);
@@ -29,8 +28,6 @@ app.use(cors({
   },
   credentials: true
 }));
-
-
 
 // MongoDB connection
 let db;
@@ -48,22 +45,229 @@ const connectDB = async () => {
   }
 };
 
-
 // User model
 const User = require('./models/Users');
 
-// ------------------- AUTH -------------------
-app.get('/check-auth', (req, res) => {
-  const token = req.cookies.token;
-  if (!token) return res.json({ loggedIn: false });
+// Session model for OAuth
+const sessionSchema = new mongoose.Schema({
+  sessionToken: { type: String, required: true, unique: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  expiresAt: { type: Date, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Session = mongoose.model('Session', sessionSchema);
+
+// ------------------- OAUTH AUTH -------------------
+// Emergent OAuth endpoint
+app.post('/auth/oauth/session', async (req, res) => {
+  const { session_id } = req.body;
+
+  if (!session_id) {
+    return res.status(400).json({ error: 'Session ID required' });
+  }
 
   try {
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    return res.json({ loggedIn: true, email: decoded.email });
+    // Call Emergent auth API
+    const response = await fetch('https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data', {
+      method: 'GET',
+      headers: {
+        'X-Session-ID': session_id,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const authData = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({ error: 'Invalid session ID' });
+    }
+
+    // Check if user exists, if not create new user
+    let user = await User.findOne({ email: authData.email });
+    if (!user) {
+      user = new User({
+        name: authData.name,
+        email: authData.email,
+        picture: authData.picture,
+        phone: '', // OAuth users may not have phone initially
+        oauthProvider: 'google'
+      });
+      await user.save();
+    }
+
+    // Create session token
+    const sessionToken = authData.session_token;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await Session.create({
+      sessionToken,
+      userId: user._id,
+      expiresAt
+    });
+
+    // Set session cookie
+    res.cookie('session_token', sessionToken, {
+      httpOnly: true,
+      secure: false,//true
+      sameSite: 'lax',//none
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/'
+    });
+
+    res.json({
+      message: 'Authentication successful',
+      user: {
+        name: user.name,
+        email: user.email,
+        picture: user.picture
+      }
+    });
+
+  } catch (error) {
+    console.error('OAuth authentication error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+});
+
+// ------------------- AUTHENTICATION MIDDLEWARE FUNCTIONS -------------------
+
+// Function to validate JWT token
+const validateToken = (token) => {
+  try {
+    return jwt.verify(token, process.env.TOKEN_KEY);
+  } catch {
+    return null;
+  }
+};
+
+// Function to validate OAuth session
+const validateOAuthSession = async (sessionToken) => {
+  try {
+    const session = await Session.findOne({
+      sessionToken,
+      expiresAt: { $gt: new Date() }
+    }).populate('userId');
+
+    return session ? session.userId : null;
   } catch (err) {
+    console.error('OAuth session validation error:', err);
+    return null;
+  }
+};
+
+// Function to get user from authentication (tries OAuth first, then JWT)
+const getAuthenticatedUser = async (req) => {
+  try {
+    const sessionToken = req.cookies.session_token;
+    const jwtToken = req.cookies.token;
+
+    // Try OAuth session first
+    if (sessionToken) {
+      const oauthUser = await validateOAuthSession(sessionToken);
+      if (oauthUser) {
+        return { user: oauthUser, authType: 'oauth' };
+      }
+    }
+
+    // Fallback to JWT token
+    if (jwtToken) {
+      const jwtUser = validateToken(jwtToken);
+      if (jwtUser) {
+        return { user: jwtUser, authType: 'jwt' };
+      }
+    }
+
+    return { user: null, authType: null };
+  } catch (err) {
+    console.error('Authentication error:', err);
+    return { user: null, authType: null };
+  }
+};
+
+// Middleware function to check authentication
+const requireAuth = async (req, res, next) => {
+  const { user, authType } = await getAuthenticatedUser(req);
+
+  if (!user) {
+    return res.status(401).json({
+      loggedIn: false,
+      error: 'Authentication required'
+    });
+  }
+
+  req.user = user;
+  req.authType = authType;
+  next();
+};
+
+// ------------------- AUTHENTICATION ENDPOINTS -------------------
+
+// Check authentication status
+app.get('/check-auth', async (req, res) => {
+  try {
+    const { user, authType } = await getAuthenticatedUser(req);
+
+    if (!user) {
+      return res.json({ loggedIn: false });
+    }
+
+    // For OAuth users, return user object
+    if (authType === 'oauth') {
+      return res.json({
+        loggedIn: true,
+        user: user
+      });
+    }
+
+    // For JWT users, fetch full user data from database
+    try {
+      const fullUser = await User.findOne({ email: user.email }).select('-password');
+      return res.json({
+        loggedIn: true,
+        user: fullUser
+      });
+    } catch (dbErr) {
+      console.error('Database error fetching user:', dbErr);
+      // Fallback to email only if database query fails
+      return res.json({
+        loggedIn: true,
+        user: { email: user.email }
+      });
+    }
+  } catch (err) {
+    console.error('Check auth error:', err);
     return res.json({ loggedIn: false });
   }
 });
+
+// Check login status (legacy endpoint)
+app.get('/check-login', async (req, res) => {
+  try {
+    const { user, authType } = await getAuthenticatedUser(req);
+
+    if (!user) {
+      return res.status(401).json({
+        loggedIn: false,
+        error: 'No valid authentication found'
+      });
+    }
+
+    return res.status(200).json({
+      loggedIn: true,
+      user: authType === 'oauth' ? user : { email: user.email }
+    });
+  } catch (err) {
+    console.error('Check login error:', err);
+    return res.status(500).json({
+      loggedIn: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// ------------------- TRADITIONAL AUTH -------------------
+let otpStore = {};
 
 // Register
 app.post('/register', async (req, res) => {
@@ -90,67 +294,8 @@ app.post('/register', async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-let otpStore = {}; // { email: { otp: 123456, expires: Date } }
 
-// ------------------- Endpoints -------------------
-
-// Save OTP in backend
-app.post('/forgot-password', async (req, res) => {
-  const { email, otp } = req.body;
-
-  if (!email || !otp) {
-    return res.status(400).json({ error: 'Email and OTP are required' });
-  }
-
-  try {
-    const user = await User.findOne({ email: email });
-    if (!user) return res.status(400).json({ error: 'Email not registered' });
-
-    otpStore[email] = { otp: parseInt(otp), expires: Date.now() + 10 * 60 * 1000 }; // 10 mins
-    res.json({ message: 'OTP saved on server' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Reset Password using OTP
-app.post('/reset-password', async (req, res) => {
-  const { email, otp, newPassword } = req.body;
-
-  if (!email || !otp || !newPassword)
-    return res.status(400).json({ error: 'Email, OTP and new password are required' });
-
-  const record = otpStore[email];
-  if (!record) return res.status(400).json({ error: 'No OTP request found' });
-
-  if (Date.now() > record.expires) {
-    delete otpStore[email];
-    return res.status(400).json({ error: 'OTP expired. Try again' });
-  }
-
-  if (parseInt(otp) !== record.otp)
-    return res.status(400).json({ error: 'Invalid OTP' });
-
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ error: 'User not found' });
-
-    // Hash the new password before saving
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-
-    await user.save();
-    delete otpStore[email];
-
-    res.json({ message: 'Password reset successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error while resetting password' });
-  }
-});
 // Login
-const isProd = process.env.NODE_ENV === 'production';
 app.post('/valid-login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Email and password required" });
@@ -165,12 +310,11 @@ app.post('/valid-login', async (req, res) => {
     const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '1h' });
 
 
-
     res.cookie('token', token, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 3600000
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
 
@@ -183,13 +327,57 @@ app.post('/valid-login', async (req, res) => {
     res.status(500).json({ error: "Server error during login" });
   }
 });
-// Check if user exists by email or phone
+
+// Forgot password and reset password endpoints (keeping existing functionality)
+app.post('/forgot-password', async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and OTP are required' });
+  }
+  try {
+    const user = await User.findOne({ email: email });
+    if (!user) return res.status(400).json({ error: 'Email not registered' });
+    otpStore[email] = { otp: parseInt(otp), expires: Date.now() + 10 * 60 * 1000 };
+    res.json({ message: 'OTP saved on server' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword)
+    return res.status(400).json({ error: 'Email, OTP and new password are required' });
+
+  const record = otpStore[email];
+  if (!record) return res.status(400).json({ error: 'No OTP request found' });
+  if (Date.now() > record.expires) {
+    delete otpStore[email];
+    return res.status(400).json({ error: 'OTP expired. Try again' });
+  }
+  if (parseInt(otp) !== record.otp)
+    return res.status(400).json({ error: 'Invalid OTP' });
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: 'User not found' });
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+    delete otpStore[email];
+    res.json({ message: 'Password reset successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error while resetting password' });
+  }
+});
+
 app.get('/get-user', async (req, res) => {
   const { email, phone } = req.query;
   if (!email || !phone) {
     return res.status(400).json({ error: 'Email and phone required' });
   }
-
   try {
     const user = await User.findOne({ $or: [{ email }, { phone }] }).select('-password');
     if (user) {
@@ -203,14 +391,38 @@ app.get('/get-user', async (req, res) => {
   }
 });
 
+// Token validation (updated for OAuth)
+const validateAuth = async (req) => {
+  const token = req.cookies.token;
+  const sessionToken = req.cookies.session_token;
 
-// Token validation
-const validateToken = (token) => {
-  try { return jwt.verify(token, process.env.TOKEN_KEY); }
-  catch { return null; }
+  try {
+    // Check OAuth session first
+    if (sessionToken) {
+      const session = await Session.findOne({
+        sessionToken,
+        expiresAt: { $gt: new Date() }
+      }).populate('userId');
+
+      if (session) {
+        return { valid: true, user: session.userId };
+      }
+    }
+
+    // Fallback to JWT token
+    if (token) {
+      const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+      const user = await User.findOne({ email: decoded.email });
+      return { valid: true, user };
+    }
+
+    return { valid: false };
+  } catch {
+    return { valid: false };
+  }
 };
 
-//logout
+// Logout (updated for OAuth)
 app.post('/logout', (req, res) => {
   res.cookie('token', '', {
     httpOnly: true,
@@ -218,30 +430,127 @@ app.post('/logout', (req, res) => {
     sameSite: 'none',
     maxAge: 0
   });
+  res.cookie('session_token', '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    maxAge: 0,
+    path: '/'
+  });
   res.json({ message: 'Logged out successfully' });
 });
-// Protected route example
-app.get('/home', (req, res) => {
-  const token = req.cookies.token;
-  if (!token) return res.status(401).json({ error: "Not authenticated" });
 
-  const decoded = validateToken(token);
-  if (!decoded) return res.status(401).json({ error: "Invalid token" });
+// ------------------- ENHANCED AI FEATURES -------------------
+// Enhanced itinerary generation with Emergent LLM
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  res.json({ message: "Welcome home!", email: decoded.email });
+app.post('/generate-itinerary', async (req, res) => {
+  try {
+    const { user, authType } = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({
+        loggedIn: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const { destination, days, interests } = req.body;
+    if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
+
+    const prompt = `
+Plan a ${days}-day trip to ${destination} for a user interested in ${interests || 'general activities'}.
+Provide the response in plain text only, without Markdown, asterisks, or headers.
+Include daily schedule, travel tips, and approximate durations.
+Please provide:
+1. Daily detailed schedule with specific timings
+2. Transportation recommendations between locations
+3. Accommodation suggestions for each area
+4. Local dining recommendations
+5. Cultural tips and local customs
+6. Budget estimates for activities
+7. Weather considerations and packing tips
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are a helpful travel assistant." },
+        { role: "user", content: prompt }
+      ]
+    });
+
+
+    const itinerary = response.choices[0].message.content;
+    res.json({ itinerary });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to generate itinerary' });
+  }
 });
+
+/*app.post('/generate-itinerary', async (req, res) => {
+  try {
+    const auth = await validateAuth(req);
+    if (!auth.valid) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { destination, days, interests, budget, travelStyle } = req.body;
+    if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
+
+    // Use Emergent LLM for enhanced AI features
+    const prompt = `Create a detailed ${days}-day travel itinerary for ${destination}.
+
+User Preferences:
+- Interests: ${interests || 'general activities'}
+- Budget: ${budget || 'moderate'}
+- Travel Style: ${travelStyle || 'balanced'}
+
+Please provide:
+1. Daily detailed schedule with specific timings
+2. Transportation recommendations between locations
+3. Accommodation suggestions for each area
+4. Local dining recommendations
+5. Cultural tips and local customs
+6. Budget estimates for activities
+7. Weather considerations and packing tips
+
+Format the response as a structured itinerary with clear day-by-day breakdown.`;
+
+    try {
+      // Initialize Emergent LLM Chat
+      const { LlmChat, UserMessage } = require('emergentintegrations/llm/chat');
+
+      const chat = new LlmChat(
+        process.env.EMERGENT_LLM_KEY,
+        `itinerary-${Date.now()}`,
+        "You are an expert travel planner with extensive knowledge of destinations worldwide. Provide detailed, practical, and personalized travel recommendations."
+      ).with_model("openai", "gpt-4o");
+
+      const userMessage = new UserMessage(prompt);
+      const response = await chat.send_message(userMessage);
+
+      res.json({ itinerary: response });
+    } catch (llmError) {
+      console.error('LLM error, falling back to basic response:', llmError);
+      // Fallback to basic itinerary
+      const basicItinerary = `${days}-day trip to ${destination}\n\nDay 1: Arrival and city exploration\n- Morning: Check-in to accommodation\n- Afternoon: Visit main attractions\n- Evening: Try local cuisine\n\nAdditional days would include cultural sites, local experiences, and recommended activities based on ${interests || 'general travel interests'}.`;
+      res.json({ itinerary: basicItinerary });
+    }
+  } catch (err) {
+    console.error('Itinerary generation error:', err);
+    res.status(500).json({ error: 'Failed to generate itinerary' });
+  }
+});*/
 
 // ------------------- PLACES -------------------
 async function getLatLonFromName(name) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(name)}&limit=1`;
-  const response = await fetch(url, { headers: { 'User-Agent': 'PlaceFinder/1.0 (anjalipujala001@example.com)' } });
+  const response = await fetch(url, { headers: { 'User-Agent': 'SoulfulYatra/2.0' } });
   if (!response.ok) throw new Error('Failed to fetch from Nominatim');
   const data = await response.json();
   if (data.length === 0) return null;
   return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), boundingbox: data[0].boundingbox };
 }
 
-// Get places from MongoDB
 let placesCache = null;
 app.get('/get-places', async (req, res) => {
   if (placesCache) return res.json({ places: placesCache });
@@ -256,7 +565,7 @@ app.get('/get-places', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
-// Get places by state using OpenTripMap
+
 async function getPlacesByName(name) {
   const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
   if (!apiKey) throw new Error('OpenTripMap API key is missing');
@@ -265,12 +574,10 @@ async function getPlacesByName(name) {
   if (!geocodeData) return [];
 
   const [lat_min, lat_max, lon_min, lon_max] = geocodeData.boundingbox.map(Number);
-
   const url = `https://api.opentripmap.com/0.1/en/places/bbox?lon_min=${lon_min}&lat_min=${lat_min}&lon_max=${lon_max}&lat_max=${lat_max}&apikey=${apiKey}&limit=50`;
 
   try {
     const response = await fetch(url);
-
     const text = await response.text();
     let data;
     try {
@@ -279,24 +586,21 @@ async function getPlacesByName(name) {
       console.error('Failed to parse JSON from OpenTripMap:', text);
       return [];
     }
-
     return data.features || [];
   } catch (err) {
     console.error('Error fetching places:', err);
     return [];
   }
 }
-// get-place-image
+
 app.get('/get-place-image', async (req, res) => {
   const { xid } = req.query;
   const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
-
   if (!xid) return res.status(400).json({ error: 'XID is required' });
 
   try {
     const response = await fetch(`https://api.opentripmap.com/0.1/en/places/xid/${xid}?apikey=${apiKey}`);
     const text = await response.text();
-
     let data;
     try {
       data = JSON.parse(text);
@@ -304,19 +608,16 @@ app.get('/get-place-image', async (req, res) => {
       console.error(`Invalid JSON for XID ${xid}:`, text);
       return res.status(404).json({ error: 'Place not found or no data available' });
     }
-
     res.json({ data });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// API endpoint
 app.get('/get-places-by-name', async (req, res) => {
   const { name } = req.query;
-  if (!name) return res.status(400).json({ error: 'State name is required' });
+  if (!name) return res.status(400).json({ error: 'Place name is required' });
 
   try {
     const places = await getPlacesByName(name);
@@ -328,43 +629,59 @@ app.get('/get-places-by-name', async (req, res) => {
   }
 });
 
-
-// ------------------- ITINERARY -------------------
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-app.post('/generate-itinerary', async (req, res) => {
-  try {
-    const token = req.cookies.token;
-    if (!token) return res.status(401).json({ error: 'No token provided' });
-    if (!validateToken(token)) return res.status(401).json({ error: 'Invalid token' });
-
-    const { destination, days, interests } = req.body;
-    if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
-
-    const prompt = `
-Plan a ${days}-day trip to ${destination} for a user interested in ${interests || 'general activities'}.
-Provide the response in plain text only, without Markdown, asterisks, or headers.
-Include daily schedule, travel tips, and approximate durations.
-`;
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a helpful travel assistant.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 1000
+// ------------------- TRANSPORTATION -------------------
+// Google Directions API integration for transportation options
+app.get('/get-transportation', async (req, res) => {
+  const { user, authType } = await getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({
+      loggedIn: false,
+      error: 'Authentication required'
     });
+  }
 
-    const itinerary = response.choices[0].message.content;
-    res.json({ itinerary });
+  const { origin, destination, mode } = req.query;
+  if (!origin || !destination) {
+    return res.status(400).json({ error: 'Origin and destination are required' });
+  }
+
+  try {
+    // Using free routing API as alternative to Google Directions
+    const routeUrl = `https://router.project-osrm.org/route/v1/driving/${origin};${destination}?overview=false&steps=true`;
+
+    const response = await fetch(routeUrl);
+    const data = await response.json();
+
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      const transportOptions = {
+        driving: {
+          duration: Math.round(route.duration / 60), // Convert to minutes
+          distance: Math.round(route.distance / 1000), // Convert to km
+          mode: 'driving',
+          estimatedCost: Math.round(route.distance / 1000 * 0.5), // Rough estimate
+          bookingUrl: `https://www.uber.com/?pickup=${origin}&dropoff=${destination}`
+        },
+        public_transit: {
+          duration: Math.round(route.duration / 60 * 1.5), // Assume transit takes 50% longer
+          distance: Math.round(route.distance / 1000),
+          mode: 'transit',
+          estimatedCost: Math.round(route.distance / 1000 * 0.1),
+          bookingUrl: `https://www.rome2rio.com/s/${origin}/${destination}`
+        }
+      };
+
+      res.json({ transportOptions });
+    } else {
+      res.status(404).json({ error: 'No routes found' });
+    }
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to generate itinerary' });
+    console.error('Transportation API error:', err);
+    res.status(500).json({ error: 'Failed to fetch transportation options' });
   }
 });
 
-// ------------------- HOTELS & FOODS -------------------
+// ------------------- HOTELS & RESTAURANTS -------------------
 const hotelsCache = {};
 const restaurantsCache = {};
 
@@ -384,8 +701,13 @@ const fetchPlacesByRadius = async (lat, lon, radius, kinds, limit, cache) => {
 };
 
 app.get('/get-hotels', async (req, res) => {
-  const token = req.cookies.token;
-  if (!token || !validateToken(token)) return res.status(401).json({ error: 'Unauthorized' });
+  const { user, authType } = await getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({
+      loggedIn: false,
+      error: 'Authentication required'
+    });
+  }
 
   const { lat, lon, radius = 10000 } = req.query;
   if (!lat || !lon) return res.status(400).json({ error: 'lat & lon required' });
@@ -400,44 +722,58 @@ app.get('/get-hotels', async (req, res) => {
 });
 
 app.get('/famous-restaurants', async (req, res) => {
-  const token = req.cookies.token;
-  if (!token || !validateToken(token)) return res.status(401).json({ error: 'Unauthorized' });
+  const { user, authType } = await getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({
+      loggedIn: false,
+      error: 'Authentication required'
+    });
+  }
 
   const { lat, lon, radius = 10000 } = req.query;
   if (!lat || !lon) return res.status(400).json({ error: 'lat & lon required' });
 
   try {
-    const restaurants = await fetchPlacesByRadius(lat, lon, radius, 'foods', 10, restaurantsCache);
+    const restaurants = await fetchPlacesByRadius(lat, lon, radius, 'foods', 50, restaurantsCache);
     res.json({ restaurants });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch restaurants' });
   }
 });
-//save trips
 
-
+// ------------------- SAVE TRIPS -------------------
 app.post('/save-trip', async (req, res) => {
-  const token = req.cookies.token;
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const { user, authType } = await getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({
+      loggedIn: false,
+      error: 'Authentication required'
+    });
+  }
 
   try {
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    const email = decoded.email;
-
-    const { destination, interests, tripData, days } = req.body;
+    const email = authType === 'oauth' ? user.email : user.email;
+    const { destination, interests, tripData, days, transportation, hotels } = req.body;
     const daysNumber = Number(days);
+
     if (!destination || !tripData)
       return res.status(400).json({ error: 'Destination and trip data are required' });
-
 
     const existingTrip = await SavedTrip.findOne({ email, destination, days: daysNumber });
     if (existingTrip) {
       return res.status(400).json({ error: 'This trip is already saved!' });
     }
 
-
-    await SavedTrip.create({ email, destination, days: daysNumber, interests, tripData });
+    await SavedTrip.create({
+      email,
+      destination,
+      days: daysNumber,
+      interests,
+      tripData,
+      transportation: transportation || {},
+      hotels: hotels || []
+    });
 
     res.json({ message: 'Trip saved successfully' });
   } catch (err) {
@@ -445,13 +781,28 @@ app.post('/save-trip', async (req, res) => {
     res.status(500).json({ error: 'Server error saving trip' });
   }
 });
-//profile
+
+// ------------------- PROFILE -------------------
 app.get('/profile', async (req, res) => {
   try {
-    const token = req.cookies.token;
-    if (!token) return res.status(401).json({ error: "No token provided" });
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    const user = await User.findOne({ email: decoded.email }).select('-password');
+    const { user: authUser, authType } = await getAuthenticatedUser(req);
+    if (!authUser) {
+      return res.status(401).json({
+        loggedIn: false,
+        error: 'Authentication required'
+      });
+    }
+
+    // For OAuth users, we already have the user object
+    if (authType === 'oauth') {
+      return res.json({ user: authUser });
+    }
+
+    // For JWT users, fetch from database
+    const email = authUser.email;
+    const user = await User.find({ email: email });
+    //console.log(user_details);
+    //const user = await User.findById(authUser._id).select('-password');
     if (!user) return res.status(404).json({ error: "User not found" });
 
     res.json({ user });
@@ -460,24 +811,28 @@ app.get('/profile', async (req, res) => {
     res.status(401).json({ error: "Unauthorized" });
   }
 });
-//get saved trips
+
 app.get("/get-saved-trips", async (req, res) => {
   try {
-    const token = req.cookies.token;
-    if (!token) return res.status(401).json({ error: "Unauthorized" });
+    const { user, authType } = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({
+        loggedIn: false,
+        error: 'Authentication required'
+      });
+    }
 
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    const trips = await SavedTrip.find({ email: decoded.email });
-
+    const email = authType === 'oauth' ? user.email : user.email;
+    const trips = await SavedTrip.find({ email });
     res.json({ trips });
   } catch (err) {
     console.error("Error fetching saved trips:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
 }).catch(err => console.error(err));
-
