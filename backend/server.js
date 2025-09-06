@@ -212,30 +212,20 @@ app.get('/check-auth', async (req, res) => {
       return res.json({ loggedIn: false });
     }
 
-    // For OAuth users, return user object
-    //if (authType === 'oauth') {
-    //return res.json({
-    //loggedIn: true,
-    //user: user
-    //});
-    //}
+    // Return full user for both OAuth and JWT users
+    return res.json({
+      loggedIn: true,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        picture: user.picture || '',
+        oauthProvider: user.oauthProvider || '',
+        __v: user.__v || 0
+      }
+    });
 
-    // For JWT users, fetch full user data from database
-    try {
-      const fullUser = await User.findOne({ email: user.email }).select('-password');
-      //console.log(password);
-      return res.json({
-        loggedIn: true,
-        user: fullUser
-      });
-    } catch (dbErr) {
-      console.error('Database error fetching user:', dbErr);
-      // Fallback to email only if database query fails
-      return res.json({
-        loggedIn: true,
-        user: { email: user.email }
-      });
-    }
   } catch (err) {
     console.error('Check auth error:', err);
     return res.json({ loggedIn: false });
