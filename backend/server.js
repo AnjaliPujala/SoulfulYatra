@@ -13,10 +13,10 @@ const OpenAI = require('openai');
 app.use(express.json());
 app.use(cookieParser());
 
-app.use(cors({
-  origin: ['https://soulful-yatra.netlify.app', 'http://localhost:3000'],
-  credentials: true
-}));
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://soulful-yatra.netlify.app'
+];
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -801,7 +801,7 @@ app.get('/profile', async (req, res) => {
 
     // For JWT users, fetch from database
     const email = authUser.email;
-    const user = await User.find({ email: email });
+    const user = await User.findOne({ email: email }).select("-password");
     //console.log(user_details);
     //const user = await User.findById(authUser._id).select('-password');
     if (!user) return res.status(404).json({ error: "User not found" });
