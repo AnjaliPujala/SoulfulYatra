@@ -13,10 +13,10 @@ const OpenAI = require('openai');
 app.use(express.json());
 app.use(cookieParser());
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://soulful-yatra.netlify.app'
-];
+app.use(cors({
+  origin: ['https://soulful-yatra.netlify.app', 'http://localhost:3000'],
+  credentials: true
+}));
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -213,16 +213,17 @@ app.get('/check-auth', async (req, res) => {
     }
 
     // For OAuth users, return user object
-    if (authType === 'oauth') {
-      return res.json({
-        loggedIn: true,
-        user: user
-      });
-    }
+    //if (authType === 'oauth') {
+    //return res.json({
+    //loggedIn: true,
+    //user: user
+    //});
+    //}
 
     // For JWT users, fetch full user data from database
     try {
       const fullUser = await User.findOne({ email: user.email }).select('-password');
+      //console.log(password);
       return res.json({
         loggedIn: true,
         user: fullUser
