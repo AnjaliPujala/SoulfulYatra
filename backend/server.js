@@ -51,114 +51,72 @@ const User = require('./models/Users');
 
 // ------------------- AUTHENTICATION -------------------
 
-// Middleware function to check authentication via JWT
-const requireAuth = async (req, res, next) => {
-  try {
-    const token = req.cookies.token;
-    if (!token) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
 
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    if (!decoded) return res.status(401).json({ loggedIn: false, error: 'Invalid token' });
+async function getAuthenticatedUser(req, res = null) {
+  let accessToken = null;
 
-    const user = await User.findOne({ email: decoded.email }).select('-password');
-    if (!user) return res.status(401).json({ loggedIn: false, error: 'User not found' });
-
-    req.user = user;
-    next();
-  } catch (err) {
-    console.error('Authentication error:', err);
-    return res.status(401).json({ loggedIn: false, error: 'Authentication failed' });
+  // 1️⃣ Check Authorization header first
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    accessToken = authHeader.split(' ')[1];
   }
-};
+
+  // 2️⃣ Try verifying access token
+  if (accessToken) {
+    try {
+      const payload = jwt.verify(accessToken, process.env.TOKEN_KEY);
+      const user = await User.findById(payload.userId).select('-password');
+      if (!user) return { user: null };
+      return { user, authType: 'jwt' };
+    } catch (err) {
+      // If token expired, continue to check refresh token
+      if (err.name !== 'TokenExpiredError') return { user: null };
+    }
+  }
+
+  // 3️⃣ Check refresh token cookie
+  const refreshToken = req.cookies?.refreshToken;
+  if (!refreshToken) return { user: null };
+
+  try {
+    const payload = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_KEY);
+    const user = await User.findById(payload.userId).select('-password');
+    if (!user) return { user: null };
+
+    // 4️⃣ Issue new access token if res is provided (optional)
+    if (res) {
+      const newAccessToken = jwt.sign(
+        { userId: user._id, email: user.email },
+        process.env.TOKEN_KEY,
+        { expiresIn: '15m' }
+      );
+      res.setHeader('x-access-token', newAccessToken); // send to frontend for memory storage
+    }
+
+    return { user, authType: 'jwt' };
+  } catch (err) {
+    return { user: null };
+  }
+}
+
 
 // ------------------- AUTH ENDPOINTS -------------------
 
 // Register
-app.post('/register', async (req, res) => {
-  const { name, email, password, phone } = req.body;
-  if (!name || !email || !password || !phone) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
-  try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ error: "User already exists" });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ name, email, phone, password: hashedPassword });
-    await newUser.save();
-
-    const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '7d' });
-
-    res.status(201).json({
-      user: { _id: newUser._id, name, email, phone },
-      token
-    });
-  } catch (error) {
-    console.error("Register error:", error);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// Valid Login
-app.post('/valid-login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
-
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ error: "User not found" });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ error: "Invalid password" });
-
-    const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '7d' });
-
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/'
-    });
-
-    res.json({
-      message: "Login successful",
-      user: { _id: user._id, name: user.name, email: user.email, phone: user.phone }
-    });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ error: "Server error during login" });
-  }
-});
-
-// Check Auth
+// Check authentication
 app.get('/check-auth', async (req, res) => {
   try {
-    const token = req.cookies.token;
-    if (!token) return res.json({ loggedIn: false });
-
-    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-    if (!decoded) return res.json({ loggedIn: false });
-
-    const user = await User.findOne({ email: decoded.email }).select('-password');
+    const { user } = await getAuthenticatedUser(req, res); // res allows issuing new access token
     if (!user) return res.json({ loggedIn: false });
 
-    return res.json({
-      loggedIn: true,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone || '',
-        picture: user.picture || '',
-        __v: user.__v || 0
-      }
-    });
+    res.json({ loggedIn: true, user });
   } catch (err) {
     console.error('Check auth error:', err);
-    return res.json({ loggedIn: false });
+    res.json({ loggedIn: false });
   }
 });
+
 
 
 // Check login status (legacy endpoint)
@@ -227,24 +185,60 @@ app.post('/valid-login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid password" });
 
-    const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '1h' });
+    // Create short-lived access token (5–15 min)
+    const accessToken = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.TOKEN_KEY,
+      { expiresIn: '15m' }
+    );
 
+    // Create long-lived refresh token (7 days)
+    const refreshToken = jwt.sign(
+      { userId: user._id },
+      process.env.REFRESH_TOKEN_KEY,
+      { expiresIn: '7d' }
+    );
 
-    res.cookie('token', token, {
+    // Set refresh token in httpOnly cookie
+    res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/'
     });
-
 
     res.json({
       message: "Login successful",
-      user: { name: user.name, email: user.email, phone: user.phone }
+      user: { name: user.name, email: user.email, phone: user.phone },
+      accessToken // frontend stores this in memory
     });
+
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Server error during login" });
+  }
+});
+
+// Refresh access token
+app.post('/refresh-token', async (req, res) => {
+  const token = req.cookies.refreshToken;
+  if (!token) return res.status(401).json({ error: "No refresh token found" });
+
+  try {
+    const payload = jwt.verify(token, process.env.REFRESH_TOKEN_KEY);
+
+    // Create new access token
+    const newAccessToken = jwt.sign(
+      { userId: payload.userId },
+      process.env.TOKEN_KEY,
+      { expiresIn: '15m' }
+    );
+
+    res.json({ accessToken: newAccessToken });
+  } catch (err) {
+    console.error('Refresh token error:', err);
+    return res.status(403).json({ error: "Invalid refresh token" });
   }
 });
 
@@ -311,36 +305,6 @@ app.get('/get-user', async (req, res) => {
   }
 });
 
-// Token validation (updated for OAuth)
-const validateAuth = async (req) => {
-  const token = req.cookies.token;
-  const sessionToken = req.cookies.session_token;
-
-  try {
-    // Check OAuth session first
-    if (sessionToken) {
-      const session = await Session.findOne({
-        sessionToken,
-        expiresAt: { $gt: new Date() }
-      }).populate('userId');
-
-      if (session) {
-        return { valid: true, user: session.userId };
-      }
-    }
-
-    // Fallback to JWT token
-    if (token) {
-      const decoded = jwt.verify(token, process.env.TOKEN_KEY);
-      const user = await User.findOne({ email: decoded.email });
-      return { valid: true, user };
-    }
-
-    return { valid: false };
-  } catch {
-    return { valid: false };
-  }
-};
 
 // Logout (updated for OAuth)
 app.post('/logout', (req, res) => {
@@ -366,13 +330,8 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.post('/generate-itinerary', async (req, res) => {
   try {
-    const { user, authType } = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({
-        loggedIn: false,
-        error: 'Authentication required'
-      });
-    }
+    const { user } = await getAuthenticatedUser(req, res);
+    if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
 
     const { destination, days, interests } = req.body;
     if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
@@ -399,14 +358,15 @@ Please provide:
       ]
     });
 
-
     const itinerary = response.choices[0].message.content;
     res.json({ itinerary });
+
   } catch (err) {
-    console.error(err);
+    console.error('Itinerary generation error:', err);
     res.status(500).json({ error: 'Failed to generate itinerary' });
   }
 });
+
 
 /*app.post('/generate-itinerary', async (req, res) => {
   try {
@@ -664,15 +624,10 @@ app.get('/famous-restaurants', async (req, res) => {
 
 // ------------------- SAVE TRIPS -------------------
 app.post('/save-trip', async (req, res) => {
-  const { user, authType } = await getAuthenticatedUser(req);
-  if (!user) {
-    return res.status(401).json({
-      loggedIn: false,
-      error: 'Authentication required'
-    });
-  }
-
   try {
+    const { user, authType } = await getAuthenticatedUser(req, res);
+    if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+
     const email = authType === 'oauth' ? user.email : user.email;
     const { destination, interests, tripData, days, transportation, hotels } = req.body;
     const daysNumber = Number(days);
@@ -681,9 +636,7 @@ app.post('/save-trip', async (req, res) => {
       return res.status(400).json({ error: 'Destination and trip data are required' });
 
     const existingTrip = await SavedTrip.findOne({ email, destination, days: daysNumber });
-    if (existingTrip) {
-      return res.status(400).json({ error: 'This trip is already saved!' });
-    }
+    if (existingTrip) return res.status(400).json({ error: 'This trip is already saved!' });
 
     await SavedTrip.create({
       email,
@@ -697,40 +650,33 @@ app.post('/save-trip', async (req, res) => {
 
     res.json({ message: 'Trip saved successfully' });
   } catch (err) {
-    console.error(err);
+    console.error('Save trip error:', err);
     res.status(500).json({ error: 'Server error saving trip' });
   }
 });
 
+
 // ------------------- PROFILE -------------------
 app.get('/profile', async (req, res) => {
   try {
-    const { user: authUser, authType } = await getAuthenticatedUser(req);
-    if (!authUser) {
-      return res.status(401).json({
-        loggedIn: false,
-        error: 'Authentication required'
-      });
+    const { user, authType } = await getAuthenticatedUser(req, res);
+    if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+
+    // For JWT users, fetch fresh from DB
+    if (authType === 'jwt') {
+      const freshUser = await User.findById(user._id).select('-password');
+      if (!freshUser) return res.status(404).json({ error: 'User not found' });
+      return res.json({ user: freshUser });
     }
 
-    // For OAuth users, we already have the user object
-    if (authType === 'oauth') {
-      return res.json({ user: authUser });
-    }
-
-    // For JWT users, fetch from database
-    const email = authUser.email;
-    const user = await User.findOne({ email: email }).select("-password");
-    //console.log(user_details);
-    //const user = await User.findById(authUser._id).select('-password');
-    if (!user) return res.status(404).json({ error: "User not found" });
-
+    // For OAuth users, return as is
     res.json({ user });
   } catch (err) {
-    console.error("Profile fetch error:", err);
-    res.status(401).json({ error: "Unauthorized" });
+    console.error('Profile fetch error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
+
 
 app.get("/get-saved-trips", async (req, res) => {
   try {
