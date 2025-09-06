@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const savedTripSchema = new mongoose.Schema({
   email: { type: String, required: true },
   destination: { type: String, required: true },
