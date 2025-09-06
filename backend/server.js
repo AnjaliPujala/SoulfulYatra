@@ -9,6 +9,7 @@ const fetch = require('node-fetch');
 const SavedTrip = require('./models/SavedTrip');
 const app = express();
 const OpenAI = require('openai');
+
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
@@ -48,171 +49,100 @@ const connectDB = async () => {
 // User model
 const User = require('./models/Users');
 
-// Session model for OAuth
-const sessionSchema = new mongoose.Schema({
-  sessionToken: { type: String, required: true, unique: true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  expiresAt: { type: Date, required: true },
-  createdAt: { type: Date, default: Date.now }
+// ------------------- AUTHENTICATION -------------------
+
+// Middleware function to check authentication via JWT
+const requireAuth = async (req, res, next) => {
+  try {
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+
+    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+    if (!decoded) return res.status(401).json({ loggedIn: false, error: 'Invalid token' });
+
+    const user = await User.findOne({ email: decoded.email }).select('-password');
+    if (!user) return res.status(401).json({ loggedIn: false, error: 'User not found' });
+
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error('Authentication error:', err);
+    return res.status(401).json({ loggedIn: false, error: 'Authentication failed' });
+  }
+};
+
+// ------------------- AUTH ENDPOINTS -------------------
+
+// Register
+app.post('/register', async (req, res) => {
+  const { name, email, password, phone } = req.body;
+  if (!name || !email || !password || !phone) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+  try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: "User already exists" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({ name, email, phone, password: hashedPassword });
+    await newUser.save();
+
+    const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '7d' });
+
+    res.status(201).json({
+      user: { _id: newUser._id, name, email, phone },
+      token
+    });
+  } catch (error) {
+    console.error("Register error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-const Session = mongoose.model('Session', sessionSchema);
-
-// ------------------- OAUTH AUTH -------------------
-// Emergent OAuth endpoint
-app.post('/auth/oauth/session', async (req, res) => {
-  const { session_id } = req.body;
-
-  if (!session_id) {
-    return res.status(400).json({ error: 'Session ID required' });
-  }
+// Valid Login
+app.post('/valid-login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
   try {
-    // Call Emergent auth API
-    const response = await fetch('https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data', {
-      method: 'GET',
-      headers: {
-        'X-Session-ID': session_id,
-        'Content-Type': 'application/json'
-      }
-    });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: "User not found" });
 
-    const authData = await response.json();
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ error: "Invalid password" });
 
-    if (!response.ok) {
-      return res.status(400).json({ error: 'Invalid session ID' });
-    }
+    const token = jwt.sign({ email }, process.env.TOKEN_KEY, { expiresIn: '7d' });
 
-    // Check if user exists, if not create new user
-    let user = await User.findOne({ email: authData.email });
-    if (!user) {
-      user = new User({
-        name: authData.name,
-        email: authData.email,
-        picture: authData.picture,
-        phone: '', // OAuth users may not have phone initially
-        oauthProvider: 'google'
-      });
-      await user.save();
-    }
-
-    // Create session token
-    const sessionToken = authData.session_token;
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    await Session.create({
-      sessionToken,
-      userId: user._id,
-      expiresAt
-    });
-
-    // Set session cookie
-    res.cookie('session_token', sessionToken, {
+    res.cookie('token', token, {
       httpOnly: true,
-      secure: true,//process.env.NODE_ENV === 'production',//true
-      sameSite: 'none',//none
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });
 
     res.json({
-      message: 'Authentication successful',
-      user: {
-        name: user.name,
-        email: user.email,
-        picture: user.picture
-      }
+      message: "Login successful",
+      user: { _id: user._id, name: user.name, email: user.email, phone: user.phone }
     });
-
-  } catch (error) {
-    console.error('OAuth authentication error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Server error during login" });
   }
 });
 
-// ------------------- AUTHENTICATION MIDDLEWARE FUNCTIONS -------------------
-
-// Function to validate JWT token
-const validateToken = (token) => {
-  try {
-    return jwt.verify(token, process.env.TOKEN_KEY);
-  } catch {
-    return null;
-  }
-};
-
-// Function to validate OAuth session
-const validateOAuthSession = async (sessionToken) => {
-  try {
-    const session = await Session.findOne({
-      sessionToken,
-      expiresAt: { $gt: new Date() }
-    }).populate('userId');
-
-    return session ? session.userId : null;
-  } catch (err) {
-    console.error('OAuth session validation error:', err);
-    return null;
-  }
-};
-
-// Function to get user from authentication (tries OAuth first, then JWT)
-const getAuthenticatedUser = async (req) => {
-  try {
-    const sessionToken = req.cookies.session_token;
-    const jwtToken = req.cookies.token;
-
-    // Try OAuth session first
-    if (sessionToken) {
-      const oauthUser = await validateOAuthSession(sessionToken);
-      if (oauthUser) {
-        return { user: oauthUser, authType: 'oauth' };
-      }
-    }
-
-    // Fallback to JWT token
-    if (jwtToken) {
-      const jwtUser = validateToken(jwtToken);
-      if (jwtUser) {
-        return { user: jwtUser, authType: 'jwt' };
-      }
-    }
-
-    return { user: null, authType: null };
-  } catch (err) {
-    console.error('Authentication error:', err);
-    return { user: null, authType: null };
-  }
-};
-
-// Middleware function to check authentication
-const requireAuth = async (req, res, next) => {
-  const { user, authType } = await getAuthenticatedUser(req);
-
-  if (!user) {
-    return res.status(401).json({
-      loggedIn: false,
-      error: 'Authentication required'
-    });
-  }
-
-  req.user = user;
-  req.authType = authType;
-  next();
-};
-
-// ------------------- AUTHENTICATION ENDPOINTS -------------------
-
-// Check authentication status
+// Check Auth
 app.get('/check-auth', async (req, res) => {
   try {
-    const { user, authType } = await getAuthenticatedUser(req);
+    const token = req.cookies.token;
+    if (!token) return res.json({ loggedIn: false });
 
-    if (!user) {
-      return res.json({ loggedIn: false });
-    }
+    const decoded = jwt.verify(token, process.env.TOKEN_KEY);
+    if (!decoded) return res.json({ loggedIn: false });
 
-    // Return full user for both OAuth and JWT users
+    const user = await User.findOne({ email: decoded.email }).select('-password');
+    if (!user) return res.json({ loggedIn: false });
+
     return res.json({
       loggedIn: true,
       user: {
@@ -221,16 +151,15 @@ app.get('/check-auth', async (req, res) => {
         email: user.email,
         phone: user.phone || '',
         picture: user.picture || '',
-        oauthProvider: user.oauthProvider || '',
         __v: user.__v || 0
       }
     });
-
   } catch (err) {
     console.error('Check auth error:', err);
     return res.json({ loggedIn: false });
   }
 });
+
 
 // Check login status (legacy endpoint)
 app.get('/check-login', async (req, res) => {
