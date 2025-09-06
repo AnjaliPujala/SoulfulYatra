@@ -628,32 +628,34 @@ app.post('/save-trip', async (req, res) => {
     const { user, authType } = await getAuthenticatedUser(req, res);
     if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
 
-    const email = authType === 'oauth' ? user.email : user.email;
-    const { destination, interests, tripData, days, transportation, hotels } = req.body;
-    const daysNumber = Number(days);
+    const email = user.email; // use user email
+    const { destination, interests, tripData, days } = req.body;
+
+    console.log('Saving trip payload:', req.body); // log payload
+    console.log('User email:', email);
 
     if (!destination || !tripData)
       return res.status(400).json({ error: 'Destination and trip data are required' });
 
-    const existingTrip = await SavedTrip.findOne({ email, destination, days: daysNumber });
+    const existingTrip = await SavedTrip.findOne({ email, destination, days });
     if (existingTrip) return res.status(400).json({ error: 'This trip is already saved!' });
 
-    await SavedTrip.create({
+    const savedTrip = await SavedTrip.create({
       email,
       destination,
-      days: daysNumber,
+      days,
       interests,
-      tripData,
-      transportation: transportation || {},
-      hotels: hotels || []
+      tripData
     });
 
+    console.log('Trip saved:', savedTrip);
     res.json({ message: 'Trip saved successfully' });
   } catch (err) {
     console.error('Save trip error:', err);
     res.status(500).json({ error: 'Server error saving trip' });
   }
 });
+
 
 
 // ------------------- PROFILE -------------------
