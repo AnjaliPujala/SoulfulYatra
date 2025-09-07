@@ -16,7 +16,8 @@ app.use(cookieParser());
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://soulful-yatra.netlify.app'
+  'https://soulful-yatra.netlify.app',
+  'https://soulful-yatra-updated.netlify.app'
 ];
 
 app.use(cors({
