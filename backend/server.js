@@ -9,7 +9,7 @@ const fetch = require('node-fetch');
 const SavedTrip = require('./models/SavedTrip');
 const app = express();
 const OpenAI = require('openai');
-
+const redisClient = require('./redisClient');
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
@@ -682,24 +682,39 @@ app.get('/profile', async (req, res) => {
 });
 
 
+
+
 app.get("/get-saved-trips", async (req, res) => {
   try {
-    const { user, authType } = await getAuthenticatedUser(req);
+    const { user } = await getAuthenticatedUser(req);
     if (!user) {
-      return res.status(401).json({
-        loggedIn: false,
-        error: 'Authentication required'
-      });
+      return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
     }
 
-    const email = authType === 'oauth' ? user.email : user.email;
+    const email = user.email;
+    const cacheKey = `savedTrips:${email}`;
+
+    // 1️⃣ Check Redis cache first
+    const cachedTrips = await redisClient.get(cacheKey);
+    if (cachedTrips) {
+      return res.json({ trips: JSON.parse(cachedTrips), cached: true });
+    }
+
+    // 2️⃣ Fetch from DB if cache miss
     const trips = await SavedTrip.find({ email });
-    res.json({ trips });
+
+    // 3️⃣ Store in Redis with TTL (e.g., 10 minutes)
+    await redisClient.set(cacheKey, JSON.stringify(trips), {
+      EX: 600 // TTL in seconds
+    });
+
+    res.json({ trips, cached: false });
   } catch (err) {
     console.error("Error fetching saved trips:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
