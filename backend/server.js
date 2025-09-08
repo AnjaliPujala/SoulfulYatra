@@ -567,10 +567,13 @@ app.get('/get-transportation', async (req, res) => {
 const hotelsCache = {};
 const restaurantsCache = {};
 
-const fetchPlacesByRadius = async (lat, lon, radius, kinds, limit, cache) => {
-  const cacheKey = `${lat}-${lon}-${radius}-${kinds}`;
-  if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < 10 * 60 * 1000) {
-    return cache[cacheKey].data;
+const fetchPlacesByRadius = async (lat, lon, radius, kinds, limit, cacheKeyPrefix) => {
+  const cacheKey = `${cacheKeyPrefix}:${lat}:${lon}:${radius}:${kinds}`;
+
+  // Check Redis cache
+  const cachedData = await redisClient.get(cacheKey);
+  if (cachedData) {
+    return JSON.parse(cachedData);
   }
 
   const apiKey = process.env.OPEN_TRIP_MAP_API_KEY;
@@ -578,24 +581,23 @@ const fetchPlacesByRadius = async (lat, lon, radius, kinds, limit, cache) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch ${kinds}`);
   const data = await response.json();
-  cache[cacheKey] = { data: data.features || [], timestamp: Date.now() };
-  return cache[cacheKey].data;
+
+  // Cache in Redis for 10 minutes
+  await redisClient.set(cacheKey, JSON.stringify(data.features || []), "EX", 10 * 60);
+
+  return data.features || [];
 };
 
+
 app.get('/get-hotels', async (req, res) => {
-  const { user, authType } = await getAuthenticatedUser(req);
-  if (!user) {
-    return res.status(401).json({
-      loggedIn: false,
-      error: 'Authentication required'
-    });
-  }
+  const { user } = await getAuthenticatedUser(req);
+  if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
 
   const { lat, lon, radius = 10000 } = req.query;
   if (!lat || !lon) return res.status(400).json({ error: 'lat & lon required' });
 
   try {
-    const hotels = await fetchPlacesByRadius(lat, lon, radius, 'accomodations,hostels,guest_houses,other_hotels', 50, hotelsCache);
+    const hotels = await fetchPlacesByRadius(lat, lon, radius, 'accomodations,hostels,guest_houses,other_hotels', 50, 'hotels');
     res.json({ hotels });
   } catch (err) {
     console.error(err);
@@ -604,25 +606,21 @@ app.get('/get-hotels', async (req, res) => {
 });
 
 app.get('/famous-restaurants', async (req, res) => {
-  const { user, authType } = await getAuthenticatedUser(req);
-  if (!user) {
-    return res.status(401).json({
-      loggedIn: false,
-      error: 'Authentication required'
-    });
-  }
+  const { user } = await getAuthenticatedUser(req);
+  if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
 
   const { lat, lon, radius = 10000 } = req.query;
   if (!lat || !lon) return res.status(400).json({ error: 'lat & lon required' });
 
   try {
-    const restaurants = await fetchPlacesByRadius(lat, lon, radius, 'foods', 50, restaurantsCache);
+    const restaurants = await fetchPlacesByRadius(lat, lon, radius, 'foods', 50, 'restaurants');
     res.json({ restaurants });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch restaurants' });
   }
 });
+
 
 // ------------------- SAVE TRIPS -------------------
 app.post('/save-trip', async (req, res) => {
@@ -650,7 +648,7 @@ app.post('/save-trip', async (req, res) => {
       tripData
     });
 
-    console.log('Trip saved:', savedTrip);
+    await redisClient.del(`savedTrips:${email}`);
     res.json({ message: 'Trip saved successfully' });
   } catch (err) {
     console.error('Save trip error:', err);
@@ -659,6 +657,26 @@ app.post('/save-trip', async (req, res) => {
 });
 
 
+app.delete('/delete-trip/:tripId', async (req, res) => {
+  try {
+    const { user } = await getAuthenticatedUser(req, res);
+    if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+
+    const email = user.email;
+    const { tripId } = req.params;
+
+    const deletedTrip = await SavedTrip.findOneAndDelete({ _id: tripId, email });
+    if (!deletedTrip) return res.status(404).json({ error: 'Trip not found' });
+
+    // ✅ Invalidate cache after deleting
+    await redisClient.del(`savedTrips:${email}`);
+
+    res.json({ message: 'Trip deleted successfully', trip: deletedTrip });
+  } catch (err) {
+    console.error('Delete trip error:', err);
+    res.status(500).json({ error: 'Server error deleting trip' });
+  }
+});
 
 // ------------------- PROFILE -------------------
 app.get('/profile', async (req, res) => {
