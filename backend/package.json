@@ -28,7 +28,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.10.0",
     "node-fetch": "^2.7.0",
-    "openai": "^4.85.1"
+    "openai": "^4.85.1",
+    "redis": "^5.8.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.0",
