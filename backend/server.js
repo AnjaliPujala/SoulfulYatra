@@ -89,7 +89,7 @@ async function getAuthenticatedUser(req, res = null) {
       const newAccessToken = jwt.sign(
         { userId: user._id, email: user.email },
         process.env.TOKEN_KEY,
-        { expiresIn: '15m' }
+        { expiresIn: '1d' }
       );
       res.setHeader('x-access-token', newAccessToken); // send to frontend for memory storage
     }
@@ -190,7 +190,7 @@ app.post('/valid-login', async (req, res) => {
     const accessToken = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.TOKEN_KEY,
-      { expiresIn: '15m' }
+      { expiresIn: '1d' }
     );
 
     // Create long-lived refresh token (7 days)
@@ -205,8 +205,7 @@ app.post('/valid-login', async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/'
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     res.json({
@@ -233,7 +232,7 @@ app.post('/refresh-token', async (req, res) => {
     const newAccessToken = jwt.sign(
       { userId: payload.userId },
       process.env.TOKEN_KEY,
-      { expiresIn: '15m' }
+      { expiresIn: '1d' }
     );
 
     res.json({ accessToken: newAccessToken });
