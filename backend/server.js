@@ -32,10 +32,11 @@ app.use(cors({
 }));
 
 // MongoDB connection
+const mongoURI = process.env.MONGO_URI;
 let db;
 const connectDB = async () => {
   try {
-    const client = await mongoose.connect(process.env.MONGO_URI, {
+    const client = await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true
     });
@@ -46,7 +47,7 @@ const connectDB = async () => {
     throw error;
   }
 };
-connectDB();
+
 // User model
 const User = require('./models/Users');
 
@@ -815,14 +816,10 @@ cron.schedule('0 * * * *', () => { // every hour
   sendTripNotifications(1440); // 1440 minutes = 24 hours
 });
 
+//vlogs
+const path = require('path');
 const multer = require('multer');
 const { GridFsStorage } = require('multer-gridfs-storage');
-const Grid = require('gridfs-stream');
-const path = require('path');
-//vlogs
-
-
-// ---------------- Multer + GridFS Storage ----------------
 const storage = new GridFsStorage({
   url: mongoURI,
   file: (req, file) => ({
@@ -863,6 +860,7 @@ app.post('/create-vlog', upload.single('file'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
+const Grid = require('gridfs-stream');
 let gfs;
 mongoose.connection.once('open', () => {
   gfs = Grid(mongoose.connection.db, mongoose.mongo);
@@ -884,7 +882,8 @@ app.get('/vlog/:id', async (req, res) => {
   }
 });
 
-
-// ---------------- Start Server ----------------
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`SoulfulYatra server running on port ${PORT}`));
+// ------------------- SERVER START -------------------
+connectDB().then(() => {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
+}).catch(err => console.error(err));
