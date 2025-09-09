@@ -10,7 +10,6 @@ const SavedTrip = require('./models/SavedTrip');
 const app = express();
 const OpenAI = require('openai');
 const redisClient = require('./redisClient');
-const path = require('path');
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
@@ -824,41 +823,50 @@ cron.schedule('0 * * * *', () => { // every hour
 });
 
 //vlogs
-const { GridFsStorage } = require('multer-gridfs-storage');
-
 const multer = require('multer');
 
-// Using GridFS storage with no custom bucket name (defaults to "fs")
-const storage = new GridFsStorage({
-  url: process.env.MONGO_URI,       // reuse your connection string
-  options: { useNewUrlParser: true, useUnifiedTopology: true },
+
+/*const storage = new GridFsStorage({
+  url: mongoURI,
+  options: { useUnifiedTopology: true },
   file: (req, file) => {
     return {
-      filename: `vlogs-${Date.now()}-${file.originalname}`  // only filename
-      // no bucketName here
+      filename: `vlog-${Date.now()}${path.extname(file.originalname)}`,
+      bucketName: 'vlogs',
     };
+  },
+});*/
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, './uploads')
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, "vlogs-image-" + Date.now() + "-" + file.originalname);
   }
-});
+})
 
-const upload = multer({ storage });
+const upload = multer({ storage })
 
-// ------------------- Create Vlog -------------------
+// ----------------- Vlog Schema -----------------
+const Vlog = require('./models/Vlogs');
+
+// ----------------- Upload Route -----------------
 app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   try {
     const { userEmail, title, description, tags } = req.body;
-
+    const { path } = req.file;
     if (!userEmail || !title || !req.file) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Store vlog metadata in your Vlog model
     const newVlog = new Vlog({
       userEmail,
       title,
       description,
-      tags: tags ? tags.split(',').map(t => t.trim()) : [],
-      fileId: req.file.id,       // <-- this is the GridFS file ID
-      createdAt: new Date()
+      tags: tags ? tags.split(',').map((t) => t.trim()) : [],
+      path
     });
 
     await newVlog.save();
@@ -869,23 +877,7 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   }
 });
 
-// ------------------- Fetch Vlog File by ID -------------------
-const { GridFSBucket, ObjectId } = require('mongodb');
-
-app.get('/vlogs/file/:id', async (req, res) => {
-  try {
-    const bucket = new GridFSBucket(db);   // db from mongoose.connection.db
-    const fileId = new ObjectId(req.params.id);
-
-    const downloadStream = bucket.openDownloadStream(fileId);
-    downloadStream.on('error', () => res.status(404).send('File not found'));
-    downloadStream.pipe(res);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch vlog file' });
-  }
-});
-
+// ----------------- Fetch Vlog File -----------------
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
