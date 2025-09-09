@@ -829,48 +829,23 @@ const { GridFsStorage } = require('multer-gridfs-storage');
 const { GridFSBucket, ObjectId } = require('mongodb');
 const Vlog = require('./models/Vlogs');
 // ------------------- GRIDFS STORAGE -------------------
-const storage = new GridFsStorage({
-  url: process.env.MONGO_URI,
-  file: (req, file) => {
-    return {
-      bucketName: 'vlogs', // will create fs.vlogs.chunks & fs.vlogs.files
-      filename: `vlog-${Date.now()}-${file.originalname}`,
-    };
-  },
-});
+let upload;
+const initGridFS = () => {
+  const storage = new GridFsStorage({
+    db: db,                              // <---- use the db you already created
+    file: (req, file) => {
+      return {
+        filename: `vlogs-image-${Date.now()}-${file.originalname}`,
+        bucketName: 'uploads',           // bucket name (default is 'fs', must match later fetch)
+      };
+    },
+  });
 
-const upload = multer({ storage });
+  upload = multer({ storage });
+};
 
 // ------------------- CREATE VLOG -------------------
-app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
-  try {
-    const { userEmail, title, description, tags } = req.body;
-    if (!userEmail || !title || !req.file) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
 
-    const newVlog = new Vlog({
-      userEmail,
-      title,
-      description,
-      tags: tags ? tags.split(',').map((t) => t.trim()) : [],
-      path: req.file.id, // GridFS file id
-    });
-
-    await newVlog.save();
-
-    res.status(201).json({
-      message: 'Vlog uploaded successfully',
-      vlog: {
-        ...newVlog.toObject(),
-        fileUrl: `${req.protocol}://${req.get('host')}/vlogs/file/${req.file.id}`,
-      },
-    });
-  } catch (err) {
-    console.error('Error creating vlog:', err);
-    res.status(500).json({ error: 'Failed to create vlog' });
-  }
-});
 
 // ------------------- FETCH VLOG FILE STREAM -------------------
 app.get('/vlogs/file/:id', async (req, res) => {
@@ -932,6 +907,36 @@ app.get('/vlogs', async (req, res) => {
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
+  initGridFS();
+  app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
+    try {
+      const { userEmail, title, description, tags } = req.body;
+      if (!userEmail || !title || !req.file) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      const newVlog = new Vlog({
+        userEmail,
+        title,
+        description,
+        tags: tags ? tags.split(',').map((t) => t.trim()) : [],
+        path: req.file.id, // GridFS file id
+      });
+
+      await newVlog.save();
+
+      res.status(201).json({
+        message: 'Vlog uploaded successfully',
+        vlog: {
+          ...newVlog.toObject(),
+          fileUrl: `${req.protocol}://${req.get('host')}/vlogs/file/${req.file.id}`,
+        },
+      });
+    } catch (err) {
+      console.error('Error creating vlog:', err);
+      res.status(500).json({ error: 'Failed to create vlog' });
+    }
+  });
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
 }).catch(err => console.error(err));
