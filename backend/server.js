@@ -853,6 +853,7 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 
     const newVlog = new Vlog({
       userEmail,
+      userName,
       title,
       description,
       tags: tags ? tags.split(',').map(t => t.trim()) : [],
@@ -891,6 +892,7 @@ app.get('/vlogs', async (req, res) => {
       return {
         _id: vlog._id,
         userEmail: vlog.userEmail,
+        userName: vlog.userName,
         title: vlog.title,
         description: vlog.description,
         tags: vlog.tags,
