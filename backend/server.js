@@ -898,10 +898,10 @@ app.get('/vlogs', async (req, res) => {
 app.post('/vlogs/:id/like', async (req, res) => {
   try {
     const vlogId = req.params.id;
-    const { userEmail } = req.body;
+    const { userEmail, userName } = req.body;
     if (!userEmail) return res.status(400).json({ error: 'User email required' });
 
-    const existing = await Like.findOne({ vlogId, userEmail });
+    const existing = await Like.findOne({ vlogId, userEmail, userName });
     if (existing) {
       await existing.deleteOne();
       return res.json({ message: 'Vlog unliked' });
@@ -919,10 +919,10 @@ app.post('/vlogs/:id/like', async (req, res) => {
 app.post('/vlogs/:id/comment', async (req, res) => {
   try {
     const vlogId = req.params.id;
-    const { userEmail, text } = req.body;
-    if (!userEmail || !text) return res.status(400).json({ error: 'Missing fields' });
+    const { userEmail, userName, text } = req.body;
+    if (!userEmail || !text || !userName) return res.status(400).json({ error: 'Missing fields' });
 
-    const comment = await Comment.create({ vlogId, userEmail, text });
+    const comment = await Comment.create({ vlogId, userEmail, userName, text });
     res.status(201).json({ message: 'Comment added', comment });
   } catch (err) {
     console.error(err);
