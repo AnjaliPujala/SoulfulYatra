@@ -879,7 +879,7 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
-aapp.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Get all vlogs
 app.get('/vlogs', async (req, res) => {
