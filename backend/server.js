@@ -901,12 +901,12 @@ app.post('/vlogs/:id/like', async (req, res) => {
     const { userEmail, userName } = req.body;
     if (!userEmail) return res.status(400).json({ error: 'User email required' });
 
-    const existing = await Like.findOne({ vlogId, userEmail, userName });
+    const existing = await Like.findOne({ vlogId, userEmail });
     if (existing) {
       await existing.deleteOne();
       return res.json({ message: 'Vlog unliked' });
     } else {
-      await Like.create({ vlogId, userEmail });
+      await Like.create({ vlogId, userEmail, userName });
       return res.json({ message: 'Vlog liked' });
     }
   } catch (err) {
