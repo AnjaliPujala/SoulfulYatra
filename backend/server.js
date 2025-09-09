@@ -878,6 +878,7 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
+app.use(express.static(""));
 app.get('/vlogs', async (req, res) => {
   try {
     const searchQuery = req.query.search || "";
@@ -916,6 +917,31 @@ app.get('/vlogs', async (req, res) => {
 // ----------------- Serve uploaded files -----------------
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.get("/vlogs/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const vlog = await Vlog.findById(id);
+    if (!vlog) {
+      return res.status(404).json({ msg: "Vlog Not Found" });
+    }
+
+    // Absolute path to the uploaded file
+    const filePath = path.join(__dirname, vlog.path);
+
+    // Send file to client
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error("Error sending file:", err);
+        res.status(500).json({ error: "Unable to send vlog file" });
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching vlog file:", error);
+    res.status(500).json({ error: "Unable to get vlog file" });
+  }
+});
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
