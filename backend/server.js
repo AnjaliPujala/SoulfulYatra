@@ -901,7 +901,8 @@ app.get('/vlogs', async (req, res) => {
       title: vlog.title,
       description: vlog.description,
       tags: vlog.tags,
-      fileUrl: `${req.protocol}://${req.get("host")}/${vlog.path}`, // e.g., http://localhost:5000/uploads/...
+      fileUrl: `${req.protocol}://${req.get("host")}/${vlog.path}`,
+      path: vlog.path, // e.g., http://localhost:5000/uploads/...
       createdAt: vlog.createdAt,
     }));
 
