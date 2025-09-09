@@ -878,7 +878,43 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
+app.get('/vlogs', async (req, res) => {
+  try {
+    const searchQuery = req.query.search || "";
 
+    // Simple search by title or description (case-insensitive)
+    const filter = searchQuery
+      ? {
+        $or: [
+          { title: { $regex: searchQuery, $options: "i" } },
+          { description: { $regex: searchQuery, $options: "i" } },
+        ],
+      }
+      : {};
+
+    const vlogs = await Vlog.find(filter).sort({ createdAt: -1 });
+
+    // Map vlogs to include a frontend-accessible file URL
+    const formattedVlogs = vlogs.map((vlog) => ({
+      _id: vlog._id,
+      userEmail: vlog.userEmail,
+      title: vlog.title,
+      description: vlog.description,
+      tags: vlog.tags,
+      fileUrl: `${req.protocol}://${req.get("host")}/${vlog.path}`, // e.g., http://localhost:5000/uploads/...
+      createdAt: vlog.createdAt,
+    }));
+
+    res.json({ vlogs: formattedVlogs });
+  } catch (err) {
+    console.error("Error fetching vlogs:", err);
+    res.status(500).json({ error: "Failed to fetch vlogs" });
+  }
+});
+
+// ----------------- Serve uploaded files -----------------
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
