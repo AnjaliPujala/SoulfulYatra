@@ -13,6 +13,12 @@ const redisClient = require('./redisClient');
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
+const fs = require('fs');
+const uploadDir = './uploads';
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
 
 const allowedOrigins = [
   'http://localhost:3000',
