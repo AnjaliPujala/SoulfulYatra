@@ -734,7 +734,7 @@ app.get("/get-saved-trips", async (req, res) => {
 const webpush = require('web-push');
 
 webpush.setVapidDetails(
-  "mailto:admin@soulfulyatra.com",
+  "mailto:anjalipujala001@gmail.com",
   process.env.VAPID_PUBLIC_KEY,
   process.env.VAPID_PRIVATE_KEY
 );
@@ -791,6 +791,10 @@ const cron = require('node-cron');
 cron.schedule('0 * * * *', () => {
   console.log('⏰ Running trip notification job...');
   sendTripNotifications();
+});
+// backend route
+app.get('/vapidPublicKey', (req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
 });
 
 // ------------------- SERVER START -------------------
