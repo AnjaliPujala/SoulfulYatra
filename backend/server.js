@@ -817,13 +817,10 @@ cron.schedule('0 * * * *', () => { // every hour
 });
 
 //vlogs
-const path = require('path');
 const multer = require('multer');
-const { GridFsStorage } = require('multer-gridfs-storage');
-const Grid = require('gridfs-stream');
 
 
-const storage = new GridFsStorage({
+/*const storage = new GridFsStorage({
   url: mongoURI,
   options: { useUnifiedTopology: true },
   file: (req, file) => {
@@ -832,18 +829,28 @@ const storage = new GridFsStorage({
       bucketName: 'vlogs',
     };
   },
-});
+});*/
 
-const upload = multer({ storage });
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, './uploads')
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, "vlogs-image-" + Date.now() + "-" + file.originalname);
+  }
+})
+
+const upload = multer({ storage })
 
 // ----------------- Vlog Schema -----------------
 const Vlog = require('./models/Vlogs');
 
 // ----------------- Upload Route -----------------
-app.post('/create-vlog', upload.single('file'), async (req, res) => {
+app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   try {
     const { userEmail, title, description, tags } = req.body;
-
+    const { path } = req.file;
     if (!userEmail || !title || !req.file) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -853,8 +860,7 @@ app.post('/create-vlog', upload.single('file'), async (req, res) => {
       title,
       description,
       tags: tags ? tags.split(',').map((t) => t.trim()) : [],
-      fileId: req.file.id,
-      fileType: req.file.mimetype,
+      path
     });
 
     await newVlog.save();
@@ -866,26 +872,6 @@ app.post('/create-vlog', upload.single('file'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
-let gfs;
-mongoose.connection.once('open', () => {
-  gfs = Grid(mongoose.connection.db, mongoose.mongo);
-  gfs.collection('vlogs');
-});
-
-app.get('/vlog/:id', async (req, res) => {
-  try {
-    const _id = new mongoose.Types.ObjectId(req.params.id);
-    const file = await gfs.files.findOne({ _id });
-    if (!file) return res.status(404).json({ error: 'File not found' });
-
-    const readstream = gfs.createReadStream({ _id: file._id });
-    res.set('Content-Type', file.contentType);
-    readstream.pipe(res);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch file' });
-  }
-});
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {

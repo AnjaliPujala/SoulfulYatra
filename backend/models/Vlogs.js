@@ -5,8 +5,7 @@ const VlogSchema = new mongoose.Schema({
     title: { type: String, required: true },
     description: String,
     tags: [String],
-    fileId: { type: mongoose.Schema.Types.ObjectId, required: true },
-    fileType: { type: String, required: true }, // added fileType
+    path: { type: String, required: true },
     createdAt: { type: Date, default: Date.now }
 });
 
