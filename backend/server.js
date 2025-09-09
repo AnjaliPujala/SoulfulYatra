@@ -847,7 +847,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ---------------- Create Vlog ----------------
 app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   try {
-    const { userEmail, title, description, tags } = req.body;
+    const { userEmail, userName, title, description, tags } = req.body;
     if (!userEmail || !title || !req.file)
       return res.status(400).json({ error: 'Missing required fields' });
 
@@ -870,8 +870,21 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 // ---------------- Fetch All Vlogs ----------------
 app.get('/vlogs', async (req, res) => {
   try {
-    const vlogs = await Vlog.find().sort({ createdAt: -1 });
+    const { search = "" } = req.query;
+
+    // Build search query
+    const query = {};
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { tags: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    const vlogs = await Vlog.find(query).sort({ createdAt: -1 });
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+
     const formatted = await Promise.all(vlogs.map(async vlog => {
       const likeCount = await Like.countDocuments({ vlogId: vlog._id });
       const comments = await Comment.find({ vlogId: vlog._id }).sort({ createdAt: 1 });
@@ -887,12 +900,14 @@ app.get('/vlogs', async (req, res) => {
         comments
       };
     }));
+
     res.json({ vlogs: formatted });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch vlogs' });
   }
 });
+
 
 // ---------------- Like / Unlike Vlog ----------------
 app.post('/vlogs/:id/like', async (req, res) => {
