@@ -863,7 +863,6 @@ app.post('/create-vlog', upload.single('file'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
-const Grid = require('gridfs-stream');
 let gfs;
 mongoose.connection.once('open', () => {
   gfs = Grid(mongoose.connection.db, mongoose.mongo);
