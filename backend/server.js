@@ -824,39 +824,28 @@ cron.schedule('0 * * * *', () => { // every hour
 
 //vlogs
 const multer = require('multer');
+const path = require('path');
 
 
-/*const storage = new GridFsStorage({
-  url: mongoURI,
-  options: { useUnifiedTopology: true },
-  file: (req, file) => {
-    return {
-      filename: `vlog-${Date.now()}${path.extname(file.originalname)}`,
-      bucketName: 'vlogs',
-    };
-  },
-});*/
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, './uploads')
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, "vlogs-image-" + Date.now() + "-" + file.originalname);
-  }
-})
-
-const upload = multer({ storage })
-
-// ----------------- Vlog Schema -----------------
 const Vlog = require('./models/Vlogs');
 
-// ----------------- Upload Route -----------------
+// ----------------- Multer Setup -----------------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+  filename: (req, file, cb) => {
+    const uniqueName = `vlogs-image-${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName);
+  }
+});
+const upload = multer({ storage });
+
+// ----------------- Serve Uploads -----------------
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ----------------- Create Vlog -----------------
 app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   try {
     const { userEmail, title, description, tags } = req.body;
-    const { path } = req.file;
     if (!userEmail || !title || !req.file) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -865,19 +854,38 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
       userEmail,
       title,
       description,
-      tags: tags ? tags.split(',').map((t) => t.trim()) : [],
-      path
+      tags: tags ? tags.split(',').map(t => t.trim()) : [],
+      path: req.file.filename, // save filename
     });
 
     await newVlog.save();
     res.status(201).json({ message: 'Vlog uploaded successfully', vlog: newVlog });
   } catch (err) {
-    console.error('Error creating vlog:', err);
+    console.error(err);
     res.status(500).json({ error: 'Failed to create vlog' });
   }
 });
 
-// ----------------- Fetch Vlog File -----------------
+// ----------------- Fetch All Vlogs -----------------
+app.get('/vlogs', async (req, res) => {
+  try {
+    const vlogs = await Vlog.find().sort({ createdAt: -1 });
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const formatted = vlogs.map(vlog => ({
+      _id: vlog._id,
+      userEmail: vlog.userEmail,
+      title: vlog.title,
+      description: vlog.description,
+      tags: vlog.tags,
+      imageUrl: `${baseUrl}/uploads/${vlog.path}`, // full URL for frontend
+      createdAt: vlog.createdAt
+    }));
+    res.json(formatted);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch vlogs' });
+  }
+});
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
