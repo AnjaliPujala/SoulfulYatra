@@ -827,9 +827,11 @@ const multer = require('multer');
 const path = require('path');
 
 
-const Vlog = require('./models/Vlogs');
+const Vlog = require('./models/Vlog');
+const Like = require('./models/Like');
+const Comment = require('./models/Comment');
 
-// ----------------- Multer Setup -----------------
+// ---------------- Multer Setup ----------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
   filename: (req, file, cb) => {
@@ -839,23 +841,22 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ----------------- Serve Uploads -----------------
+// ---------------- Serve uploads ----------------
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ----------------- Create Vlog -----------------
+// ---------------- Create Vlog ----------------
 app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   try {
     const { userEmail, title, description, tags } = req.body;
-    if (!userEmail || !title || !req.file) {
+    if (!userEmail || !title || !req.file)
       return res.status(400).json({ error: 'Missing required fields' });
-    }
 
     const newVlog = new Vlog({
       userEmail,
       title,
       description,
       tags: tags ? tags.split(',').map(t => t.trim()) : [],
-      path: req.file.filename, // save filename
+      path: req.file.filename
     });
 
     await newVlog.save();
@@ -866,24 +867,90 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
   }
 });
 
-// ----------------- Fetch All Vlogs -----------------
+// ---------------- Fetch All Vlogs ----------------
 app.get('/vlogs', async (req, res) => {
   try {
     const vlogs = await Vlog.find().sort({ createdAt: -1 });
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const formatted = vlogs.map(vlog => ({
-      _id: vlog._id,
-      userEmail: vlog.userEmail,
-      title: vlog.title,
-      description: vlog.description,
-      tags: vlog.tags,
-      imageUrl: `${baseUrl}/uploads/${vlog.path}`, // full URL for frontend
-      createdAt: vlog.createdAt
+    const formatted = await Promise.all(vlogs.map(async vlog => {
+      const likeCount = await Like.countDocuments({ vlogId: vlog._id });
+      const comments = await Comment.find({ vlogId: vlog._id }).sort({ createdAt: 1 });
+      return {
+        _id: vlog._id,
+        userEmail: vlog.userEmail,
+        title: vlog.title,
+        description: vlog.description,
+        tags: vlog.tags,
+        imageUrl: `${baseUrl}/uploads/${vlog.path}`,
+        createdAt: vlog.createdAt,
+        likeCount,
+        comments
+      };
     }));
-    res.json(formatted);
+    res.json({ vlogs: formatted });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch vlogs' });
+  }
+});
+
+// ---------------- Like / Unlike Vlog ----------------
+app.post('/vlogs/:id/like', async (req, res) => {
+  try {
+    const vlogId = req.params.id;
+    const { userEmail } = req.body;
+    if (!userEmail) return res.status(400).json({ error: 'User email required' });
+
+    const existing = await Like.findOne({ vlogId, userEmail });
+    if (existing) {
+      await existing.deleteOne();
+      return res.json({ message: 'Vlog unliked' });
+    } else {
+      await Like.create({ vlogId, userEmail });
+      return res.json({ message: 'Vlog liked' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to like/unlike vlog' });
+  }
+});
+
+// ---------------- Add Comment ----------------
+app.post('/vlogs/:id/comment', async (req, res) => {
+  try {
+    const vlogId = req.params.id;
+    const { userEmail, text } = req.body;
+    if (!userEmail || !text) return res.status(400).json({ error: 'Missing fields' });
+
+    const comment = await Comment.create({ vlogId, userEmail, text });
+    res.status(201).json({ message: 'Comment added', comment });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to add comment' });
+  }
+});
+
+// ---------------- Fetch Comments ----------------
+app.get('/vlogs/:id/comments', async (req, res) => {
+  try {
+    const vlogId = req.params.id;
+    const comments = await Comment.find({ vlogId }).sort({ createdAt: 1 });
+    res.json({ comments });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+// ---------------- Fetch Like Count ----------------
+app.get('/vlogs/:id/likes', async (req, res) => {
+  try {
+    const vlogId = req.params.id;
+    const likeCount = await Like.countDocuments({ vlogId });
+    res.json({ likeCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch likes' });
   }
 });
 

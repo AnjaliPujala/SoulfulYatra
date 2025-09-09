@@ -6,6 +6,8 @@ const VlogSchema = new mongoose.Schema({
     description: String,
     tags: [String],
     path: { type: String, required: true },
+    likeCount: { type: Number, default: 0 },
+    commentCount: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
 });
 
