@@ -564,8 +564,6 @@ app.get('/get-transportation', async (req, res) => {
 });
 
 // ------------------- HOTELS & RESTAURANTS -------------------
-const hotelsCache = {};
-const restaurantsCache = {};
 
 const fetchPlacesByRadius = async (lat, lon, radius, kinds, limit, cacheKeyPrefix) => {
   const cacheKey = `${cacheKeyPrefix}:${lat}:${lon}:${radius}:${kinds}`;
@@ -620,7 +618,6 @@ app.get('/famous-restaurants', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch restaurants' });
   }
 });
-
 
 // ------------------- SAVE TRIPS -------------------
 app.post('/save-trip', async (req, res) => {
@@ -733,6 +730,68 @@ app.get("/get-saved-trips", async (req, res) => {
   }
 });
 
+// puah notifications
+const webpush = require('web-push');
+
+webpush.setVapidDetails(
+  "mailto:admin@soulfulyatra.com",
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
+
+const UserSubscription = require('./models/UserSubscription');
+app.post('/subscribe', async (req, res) => {
+  try {
+    const { email, subscription } = req.body;
+    if (!email || !subscription) {
+      return res.status(400).json({ error: 'Email and subscription are required' });
+    }
+
+    // Upsert (insert or update) user subscription
+    await UserSubscription.findOneAndUpdate(
+      { email },
+      { subscription },
+      { upsert: true, new: true }
+    );
+
+    console.log(`🔔 Push subscription saved for ${email}`);
+    res.status(201).json({ message: 'Subscription saved successfully' });
+  } catch (err) {
+    console.error('Subscription save error:', err);
+    res.status(500).json({ error: 'Failed to save subscription' });
+  }
+});
+
+async function sendTripNotifications() {
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // Find trips older than 1 day
+  const trips = await SavedTrip.find({ savedAt: { $lte: oneDayAgo } });
+
+  for (const trip of trips) {
+    const subscriptionDoc = await UserSubscription.findOne({ email: trip.email });
+    if (subscriptionDoc) {
+      const payload = JSON.stringify({
+        title: 'Your saved trip is waiting!',
+        body: `Hey, your trip to ${trip.destination} is ready to explore!`,
+      });
+
+      try {
+        await webpush.sendNotification(subscriptionDoc.subscription, payload);
+        console.log(`✅ Notification sent to ${trip.email}`);
+      } catch (err) {
+        console.error(`❌ Failed to send to ${trip.email}:`, err);
+      }
+    }
+  }
+}
+const cron = require('node-cron');
+
+// Runs every hour — adjust as you like
+cron.schedule('0 * * * *', () => {
+  console.log('⏰ Running trip notification job...');
+  sendTripNotifications();
+});
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
