@@ -826,11 +826,12 @@ const Grid = require('gridfs-stream');
 const storage = new GridFsStorage({
   url: mongoURI,
   options: { useUnifiedTopology: true },
-  file: (req, file) =>
-    new Promise((resolve) => {
-      const filename = `vlog-${Date.now()}${path.extname(file.originalname)}`;
-      resolve({ filename, bucketName: 'vlogs' });
-    }),
+  file: (req, file) => {
+    return {
+      filename: `vlog-${Date.now()}${path.extname(file.originalname)}`,
+      bucketName: 'vlogs',
+    };
+  },
 });
 
 const upload = multer({ storage });
@@ -838,7 +839,7 @@ const upload = multer({ storage });
 // ----------------- Vlog Schema -----------------
 const Vlog = require('./models/Vlogs');
 
-// ----------------- Routes -----------------
+// ----------------- Upload Route -----------------
 app.post('/create-vlog', upload.single('file'), async (req, res) => {
   try {
     const { userEmail, title, description, tags } = req.body;
