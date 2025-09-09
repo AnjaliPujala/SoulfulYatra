@@ -732,6 +732,8 @@ app.get("/get-saved-trips", async (req, res) => {
 
 // puah notifications
 const webpush = require('web-push');
+const cron = require('node-cron');
+const UserSubscription = require('./models/UserSubscription');
 
 webpush.setVapidDetails(
   "mailto:anjalipujala001@gmail.com",
@@ -739,63 +741,80 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
-const UserSubscription = require('./models/UserSubscription');
+// Route to save subscription
 app.post('/subscribe', async (req, res) => {
   try {
     const { email, subscription } = req.body;
-    if (!email || !subscription) {
-      return res.status(400).json({ error: 'Email and subscription are required' });
-    }
+    if (!email || !subscription) return res.status(400).json({ error: 'Email & subscription required' });
 
-    // Upsert (insert or update) user subscription
     await UserSubscription.findOneAndUpdate(
       { email },
       { subscription },
       { upsert: true, new: true }
     );
 
-    console.log(`🔔 Push subscription saved for ${email}`);
-    res.status(201).json({ message: 'Subscription saved successfully' });
+    console.log(`🔔 Subscription saved for ${email}`);
+    res.status(201).json({ message: 'Subscription saved' });
   } catch (err) {
-    console.error('Subscription save error:', err);
+    console.error(err);
     res.status(500).json({ error: 'Failed to save subscription' });
   }
 });
 
-async function sendTripNotifications() {
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+// VAPID key route for frontend
+app.get('/vapidPublicKey', (req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
+});
 
-  // Find trips older than 1 day
-  const trips = await SavedTrip.find({ savedAt: { $lte: oneDayAgo } });
+// Send push notifications for trips
+async function sendTripNotifications(minutesAgo = 1440) {
+  try {
+    const dateThreshold = new Date(Date.now() - minutesAgo * 60 * 1000);
 
-  for (const trip of trips) {
-    const subscriptionDoc = await UserSubscription.findOne({ email: trip.email });
-    if (subscriptionDoc) {
+    // Find trips not notified yet, older than threshold
+    const trips = await SavedTrip.find({
+      savedAt: { $lte: dateThreshold },
+      notified: false
+    });
+
+    console.log(`Found ${trips.length} trips to notify.`);
+
+    for (const trip of trips) {
+      const subscriptionDoc = await UserSubscription.findOne({ email: trip.email });
+      if (!subscriptionDoc) continue;
+
       const payload = JSON.stringify({
-        title: 'Your saved trip is waiting!',
-        body: `Hey, your trip to ${trip.destination} is ready to explore!`,
+        title: "Your saved trip is waiting!",
+        body: `Hey, your trip to ${trip.destination} is ready to explore!`
       });
 
       try {
         await webpush.sendNotification(subscriptionDoc.subscription, payload);
         console.log(`✅ Notification sent to ${trip.email}`);
+
+        // Mark trip as notified
+        trip.notified = true;
+        await trip.save();
       } catch (err) {
-        console.error(`❌ Failed to send to ${trip.email}:`, err);
+        console.error(`❌ Failed to send to ${trip.email}`, err);
       }
     }
+  } catch (err) {
+    console.error("Error in sendTripNotifications:", err);
   }
 }
-const cron = require('node-cron');
 
-// Runs every hour — adjust as you like
-cron.schedule('0 * * * *', () => {
-  console.log('⏰ Running trip notification job...');
-  sendTripNotifications();
+// ---------- TEST PUSH: 5 minutes after save ----------
+cron.schedule('*/1 * * * *', () => {
+  console.log('⏰ Running test trip notification job (5 min delay)...');
+  sendTripNotifications(5); // check trips older than 5 minutes
 });
-// backend route
-app.get('/vapidPublicKey', (req, res) => {
-  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
-});
+
+// ---------- PRODUCTION: 24 hours after save ----------
+/*cron.schedule('0 * * * *', () => { // every hour
+  console.log('⏰ Running production trip notification job (24h delay)...');
+  sendTripNotifications(1440); // 1440 minutes = 24 hours
+});*/
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
