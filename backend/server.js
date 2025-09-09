@@ -820,12 +820,17 @@ cron.schedule('0 * * * *', () => { // every hour
 const path = require('path');
 const multer = require('multer');
 const { GridFsStorage } = require('multer-gridfs-storage');
+const Grid = require('gridfs-stream');
+
+
 const storage = new GridFsStorage({
   url: mongoURI,
-  file: (req, file) => ({
-    filename: `vlog-${Date.now()}${path.extname(file.originalname)}`,
-    bucketName: 'vlogs'
-  }),
+  options: { useUnifiedTopology: true },
+  file: (req, file) =>
+    new Promise((resolve) => {
+      const filename = `vlog-${Date.now()}${path.extname(file.originalname)}`;
+      resolve({ filename, bucketName: 'vlogs' });
+    }),
 });
 
 const upload = multer({ storage });
@@ -846,9 +851,9 @@ app.post('/create-vlog', upload.single('file'), async (req, res) => {
       userEmail,
       title,
       description,
-      tags: tags ? tags.split(',').map(t => t.trim()) : [],
+      tags: tags ? tags.split(',').map((t) => t.trim()) : [],
       fileId: req.file.id,
-      fileType: req.file.mimetype
+      fileType: req.file.mimetype,
     });
 
     await newVlog.save();
@@ -860,7 +865,6 @@ app.post('/create-vlog', upload.single('file'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
-const Grid = require('gridfs-stream');
 let gfs;
 mongoose.connection.once('open', () => {
   gfs = Grid(mongoose.connection.db, mongoose.mongo);
@@ -873,7 +877,7 @@ app.get('/vlog/:id', async (req, res) => {
     const file = await gfs.files.findOne({ _id });
     if (!file) return res.status(404).json({ error: 'File not found' });
 
-    const readstream = gfs.createReadStream(file.filename);
+    const readstream = gfs.createReadStream({ _id: file._id });
     res.set('Content-Type', file.contentType);
     readstream.pipe(res);
   } catch (err) {
