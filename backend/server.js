@@ -827,7 +827,7 @@ const multer = require('multer');
 const path = require('path');
 
 
-const Vlog = require('./models/Vlog');
+const Vlog = require('./models/Vlogs');
 const Like = require('./models/Like');
 const Comment = require('./models/Comment');
 
