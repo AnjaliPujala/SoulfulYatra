@@ -628,8 +628,8 @@ app.post('/save-trip', async (req, res) => {
     const email = user.email; // use user email
     const { destination, interests, tripData, days } = req.body;
 
-    console.log('Saving trip payload:', req.body); // log payload
-    console.log('User email:', email);
+    //console.log('Saving trip payload:', req.body); // log payload
+    //console.log('User email:', email);
 
     if (!destination || !tripData)
       return res.status(400).json({ error: 'Destination and trip data are required' });
@@ -753,7 +753,7 @@ app.post('/subscribe', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    console.log(`🔔 Subscription saved for ${email}`);
+    //console.log(`🔔 Subscription saved for ${email}`);
     res.status(201).json({ message: 'Subscription saved' });
   } catch (err) {
     console.error(err);
@@ -777,7 +777,7 @@ async function sendTripNotifications(minutesAgo = 1440) {
       notified: false
     });
 
-    console.log(`Found ${trips.length} trips to notify.`);
+    //console.log(`Found ${trips.length} trips to notify.`);
 
     for (const trip of trips) {
       const subscriptionDoc = await UserSubscription.findOne({ email: trip.email });
@@ -790,7 +790,7 @@ async function sendTripNotifications(minutesAgo = 1440) {
 
       try {
         await webpush.sendNotification(subscriptionDoc.subscription, payload);
-        console.log(`✅ Notification sent to ${trip.email}`);
+        //console.log(`✅ Notification sent to ${trip.email}`);
 
         // Mark trip as notified
         trip.notified = true;
@@ -805,19 +805,112 @@ async function sendTripNotifications(minutesAgo = 1440) {
 }
 
 // ---------- TEST PUSH: 5 minutes after save ----------
-cron.schedule('*/1 * * * *', () => {
-  console.log('⏰ Running test trip notification job (5 min delay)...');
-  sendTripNotifications(5); // check trips older than 5 minutes
-});
+//cron.schedule('*/1 * * * * ', () => {
+//console.log('⏰ Running test trip notification job (5 min delay)...');
+//sendTripNotifications(5); // check trips older than 5 minutes
+//});
 
 // ---------- PRODUCTION: 24 hours after save ----------
-/*cron.schedule('0 * * * *', () => { // every hour
-  console.log('⏰ Running production trip notification job (24h delay)...');
+cron.schedule('0 * * * *', () => { // every hour
   sendTripNotifications(1440); // 1440 minutes = 24 hours
-});*/
+});
 
-// ------------------- SERVER START -------------------
-connectDB().then(() => {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
+const multer = require('multer');
+const { GridFsStorage } = require('multer-gridfs-storage');
+const Grid = require('gridfs-stream');
+const path = require('path');
+//vlogs
+let gfs;
+connectDB().then(client => {
+  gfs = Grid(client.connection.db, mongoose.mongo);
+  gfs.collection('vlogs'); // GridFS collection
 }).catch(err => console.error(err));
+
+// ---------------- Multer + GridFS Storage ----------------
+const storage = new GridFsStorage({
+  db: mongoose.connection,
+  file: (req, file) => ({
+    filename: `vlog-${Date.now()}${path.extname(file.originalname)}`,
+    bucketName: 'vlogs'
+  })
+});
+
+const upload = multer({ storage });
+
+// ---------------- Vlog Schema ----------------
+
+
+const Vlog = require('./models/Vlogs');
+
+// ---------------- Routes ----------------
+
+// Upload a vlog
+app.post('/create-vlog', upload.single('file'), async (req, res) => {
+  try {
+    const { userEmail, title, description, tags } = req.body;
+    if (!userEmail || !title || !req.file) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const newVlog = new Vlog({
+      userEmail,
+      title,
+      description,
+      tags: tags ? tags.split(',').map(t => t.trim()) : [],
+      fileId: req.file.id
+    });
+
+    await newVlog.save();
+    res.status(201).json({ message: 'Vlog uploaded successfully', vlog: newVlog });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create vlog' });
+  }
+});
+
+// Get all vlogs with optional search
+app.get('/vlogs', async (req, res) => {
+  try {
+    const { search } = req.query;
+    let filter = {};
+    if (search) {
+      filter = {
+        $or: [
+          { title: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { tags: { $regex: search, $options: 'i' } }
+        ]
+      };
+    }
+
+    const vlogs = await Vlog.find(filter).sort({ createdAt: -1 });
+    res.json({ vlogs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch vlogs' });
+  }
+});
+
+// Stream a vlog by fileId
+app.get('/vlog/:fileId', async (req, res) => {
+  try {
+    const fileId = new mongoose.Types.ObjectId(req.params.fileId);
+
+    gfs.files.findOne({ _id: fileId }, (err, file) => {
+      if (!file || file.length === 0) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      const readstream = gfs.createReadStream({ _id: file._id });
+      res.set('Content-Type', file.contentType || 'video/mp4');
+      readstream.pipe(res);
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to stream vlog' });
+  }
+});
+
+// ---------------- Start Server ----------------
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`SoulfulYatra server running on port ${PORT}`));
