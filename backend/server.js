@@ -10,6 +10,7 @@ const SavedTrip = require('./models/SavedTrip');
 const app = express();
 const OpenAI = require('openai');
 const redisClient = require('./redisClient');
+const path = require('path');
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
@@ -878,67 +879,48 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 });
 
 // ----------------- Fetch Vlog File -----------------
-app.use(express.static(""));
+aapp.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Get all vlogs
 app.get('/vlogs', async (req, res) => {
+  const searchQuery = req.query.search || "";
+  const filter = searchQuery
+    ? {
+      $or: [
+        { title: { $regex: searchQuery, $options: "i" } },
+        { description: { $regex: searchQuery, $options: "i" } },
+      ]
+    }
+    : {};
+
   try {
-    const searchQuery = req.query.search || "";
-
-    // Simple search by title or description (case-insensitive)
-    const filter = searchQuery
-      ? {
-        $or: [
-          { title: { $regex: searchQuery, $options: "i" } },
-          { description: { $regex: searchQuery, $options: "i" } },
-        ],
-      }
-      : {};
-
     const vlogs = await Vlog.find(filter).sort({ createdAt: -1 });
-
-    // Map vlogs to include a frontend-accessible file URL
-    const formattedVlogs = vlogs.map((vlog) => ({
+    const formattedVlogs = vlogs.map(vlog => ({
       _id: vlog._id,
       userEmail: vlog.userEmail,
       title: vlog.title,
       description: vlog.description,
       tags: vlog.tags,
       fileUrl: `${req.protocol}://${req.get("host")}/${vlog.path}`,
-      path: vlog.path, // e.g., http://localhost:5000/uploads/...
       createdAt: vlog.createdAt,
     }));
-
     res.json({ vlogs: formattedVlogs });
   } catch (err) {
-    console.error("Error fetching vlogs:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch vlogs" });
   }
 });
 
-// ----------------- Serve uploaded files -----------------
-const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
+// Get single vlog file
 app.get("/vlogs/:id", async (req, res) => {
   const { id } = req.params;
-
   try {
     const vlog = await Vlog.findById(id);
-    if (!vlog) {
-      return res.status(404).json({ msg: "Vlog Not Found" });
-    }
-
-    // Absolute path to the uploaded file
+    if (!vlog) return res.status(404).json({ msg: "Vlog Not Found" });
     const filePath = path.join(__dirname, vlog.path);
-
-    // Send file to client
-    res.sendFile(filePath, (err) => {
-      if (err) {
-        console.error("Error sending file:", err);
-        res.status(500).json({ error: "Unable to send vlog file" });
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching vlog file:", error);
+    res.sendFile(filePath);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Unable to get vlog file" });
   }
 });
