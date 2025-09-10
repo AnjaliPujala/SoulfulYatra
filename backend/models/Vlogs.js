@@ -1,3 +1,4 @@
+// models/Vlogs.js
 const mongoose = require('mongoose');
 
 const VlogSchema = new mongoose.Schema({
@@ -6,7 +7,11 @@ const VlogSchema = new mongoose.Schema({
     title: { type: String, required: true },
     description: String,
     tags: [String],
-    path: { type: String, required: true },
+
+    // For Cloudinary
+    imageUrl: { type: String, required: true }, // <-- Store Cloudinary URL
+    // path: { type: String, required: true },   // <-- REMOVE or make optional if no longer used
+
     likeCount: { type: Number, default: 0 },
     commentCount: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
