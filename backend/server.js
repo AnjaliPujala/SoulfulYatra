@@ -822,27 +822,33 @@ cron.schedule('0 * * * *', () => { // every hour
   sendTripNotifications(1440); // 1440 minutes = 24 hours
 });
 
-//vlogs
 const multer = require('multer');
 const path = require('path');
-
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const Vlog = require('./models/Vlogs');
 const Like = require('./models/Like');
 const Comment = require('./models/Comment');
 
-// ---------------- Multer Setup ----------------
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
-  filename: (req, file, cb) => {
-    const uniqueName = `vlogs-image-${Date.now()}-${file.originalname}`;
-    cb(null, uniqueName);
+// ---------------- Cloudinary Config ----------------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// ---------------- Multer Cloudinary Storage ----------------
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'vlogs', // folder name in cloudinary
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'webm', 'ogg'],
+    public_id: (req, file) => `vlogs-image-${Date.now()}-${path.parse(file.originalname).name}`
   }
 });
-const upload = multer({ storage });
 
-// ---------------- Serve uploads ----------------
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const upload = multer({ storage });
 
 // ---------------- Create Vlog ----------------
 app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
@@ -851,13 +857,16 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
     if (!userEmail || !title || !req.file)
       return res.status(400).json({ error: 'Missing required fields' });
 
+    // Cloudinary gives secure_url for CDN
+    const cloudUrl = req.file.path || req.file.secure_url;
+
     const newVlog = new Vlog({
       userEmail,
       userName,
       title,
       description,
       tags: tags ? tags.split(',').map(t => t.trim()) : [],
-      path: req.file.filename
+      imageUrl: cloudUrl // <-- Store Cloudinary URL directly
     });
 
     await newVlog.save();
@@ -884,24 +893,25 @@ app.get('/vlogs', async (req, res) => {
     }
 
     const vlogs = await Vlog.find(query).sort({ createdAt: -1 });
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-    const formatted = await Promise.all(vlogs.map(async vlog => {
-      const likeCount = await Like.countDocuments({ vlogId: vlog._id });
-      const comments = await Comment.find({ vlogId: vlog._id }).sort({ createdAt: 1 });
-      return {
-        _id: vlog._id,
-        userEmail: vlog.userEmail,
-        userName: vlog.userName,
-        title: vlog.title,
-        description: vlog.description,
-        tags: vlog.tags,
-        imageUrl: `${baseUrl}/uploads/${vlog.path}`,
-        createdAt: vlog.createdAt,
-        likeCount,
-        comments
-      };
-    }));
+    const formatted = await Promise.all(
+      vlogs.map(async vlog => {
+        const likeCount = await Like.countDocuments({ vlogId: vlog._id });
+        const comments = await Comment.find({ vlogId: vlog._id }).sort({ createdAt: 1 });
+        return {
+          _id: vlog._id,
+          userEmail: vlog.userEmail,
+          userName: vlog.userName,
+          title: vlog.title,
+          description: vlog.description,
+          tags: vlog.tags,
+          imageUrl: vlog.imageUrl,  // <-- Already full CDN URL
+          createdAt: vlog.createdAt,
+          likeCount,
+          comments
+        };
+      })
+    );
 
     res.json({ vlogs: formatted });
   } catch (err) {
@@ -909,7 +919,6 @@ app.get('/vlogs', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch vlogs' });
   }
 });
-
 
 // ---------------- Like / Unlike Vlog ----------------
 app.post('/vlogs/:id/like', async (req, res) => {
@@ -951,7 +960,13 @@ app.post('/vlogs/:id/comment', async (req, res) => {
 app.get('/vlogs/:id/comments', async (req, res) => {
   try {
     const vlogId = req.params.id;
-    const comments = await Comment.find({ vlogId }).sort({ createdAt: 1 });
+    const limit = parseInt(req.query.limit, 10) || 0;
+    const sortOrder = req.query.sort === 'asc' ? 1 : -1;
+
+    let query = Comment.find({ vlogId }).sort({ createdAt: sortOrder });
+    if (limit > 0) query = query.limit(limit);
+
+    const comments = await query.exec();
     res.json({ comments });
   } catch (err) {
     console.error(err);
@@ -970,6 +985,7 @@ app.get('/vlogs/:id/likes', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch likes' });
   }
 });
+
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
