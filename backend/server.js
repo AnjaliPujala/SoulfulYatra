@@ -1037,55 +1037,61 @@ app.get('/get-user-vlogs', async (req, res) => {
   }
 });
 const ProfileImage = require("./models/ProfileImage");
-app.post("/profile-image", upload.single("image"), async (req, res) => {
-  try {
-    const { userEmail } = req.body;
-    if (!userEmail || !req.file) {
-      return res.status(400).json({ error: "userEmail and image are required" });
-    }
-
-    // Upload to Cloudinary
-    const result = await cloudinary.uploader.upload_stream(
-      { folder: "profile_images" },
-      async (error, cloudRes) => {
-        if (error) {
-          console.error(error);
-          return res.status(500).json({ error: "Cloudinary upload failed" });
-        }
-
-        // Check if profile exists
-        let profile = await ProfileImage.findOne({ userEmail });
-
-        if (profile) {
-          // Update existing
-          profile.profileImageUrl = cloudRes.secure_url;
-          await profile.save();
-        } else {
-          // Create new
-          profile = new ProfileImage({
-            userEmail,
-            profileImageUrl: cloudRes.secure_url,
-          });
-          await profile.save();
-        }
-
-        // Return updated image URL
-        res.json({
-          message: "Profile image saved successfully",
-          profileImageUrl: profile.profileImageUrl
-        });
-      }
-    );
-
-    // Pipe buffer to Cloudinary upload stream
-    result.end(req.file.buffer);
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to add/update profile image" });
+const profileStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'profile_images',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
+    public_id: (req, file) => `profile-${Date.now()}-${path.parse(file.originalname).name}`
   }
 });
 
+const profileUpload = multer({ storage: profileStorage });
+
+// ---------------- Fetch Profile Image ----------------
+app.get('/profile-image', async (req, res) => {
+  try {
+    const { userEmail } = req.query;
+    if (!userEmail) return res.status(400).json({ error: 'userEmail required' });
+
+    const profile = await ProfileImage.findOne({ userEmail });
+    if (!profile) return res.json({ profileImageUrl: null });
+
+    res.json({ profileImageUrl: profile.profileImageUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch profile image' });
+  }
+});
+
+// ---------------- Add or Update Profile Image ----------------
+app.post('/profile-image', profileUpload.single('profileImage'), async (req, res) => {
+  try {
+    const { userEmail } = req.body;
+    if (!userEmail || !req.file) {
+      return res.status(400).json({ error: 'userEmail and profileImage are required' });
+    }
+
+    const cloudUrl = req.file.path || req.file.secure_url;
+
+    let profile = await ProfileImage.findOne({ userEmail });
+    if (profile) {
+      profile.profileImageUrl = cloudUrl;
+      await profile.save();
+    } else {
+      profile = new ProfileImage({ userEmail, profileImageUrl: cloudUrl });
+      await profile.save();
+    }
+
+    res.json({
+      message: 'Profile image saved successfully',
+      profileImageUrl: profile.profileImageUrl
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to add/update profile image' });
+  }
+});
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
