@@ -1119,6 +1119,21 @@ app.post('/profile-image', profileUpload.single('profileImage'), async (req, res
     res.status(500).json({ error: 'Failed to add/update profile image' });
   }
 });
+// GET /api/likes/check?vlogId=...&email=...
+app.get('/check', async (req, res) => {
+  try {
+    const { vlogId, email } = req.query;
+    if (!vlogId || !email) {
+      return res.status(400).json({ error: 'vlogId and email are required' });
+    }
+
+    const existing = await Like.findOne({ vlogId, userEmail: email });
+    res.json({ liked: !!existing });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
