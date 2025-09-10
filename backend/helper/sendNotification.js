@@ -1,6 +1,6 @@
 // helpers/sendNotification.js
 const webpush = require('web-push');
-const UserSubscription = require('./models/UserSubscription');
+const UserSubscription = require('../models/UserSubscription');
 
 async function sendNotification(targetEmail, payload) {
     try {
