@@ -932,7 +932,7 @@ app.get('/vlogs', async (req, res) => {
 
 
 // make sure you import your helper:
-const sendNotification = require('./helpers/sendNotification');
+const sendNotification = require('./helper/sendNotification');
 
 // ---------------- Like / Unlike Vlog ----------------
 app.post('/vlogs/:id/like', async (req, res) => {
