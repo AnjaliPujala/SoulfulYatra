@@ -880,7 +880,7 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
 // ---------------- Fetch All Vlogs ----------------
 app.get('/vlogs', async (req, res) => {
   try {
-    const { search = "" } = req.query;
+    const { search = "", page = 0, limit = 4 } = req.query;
 
     // Build search query
     const query = {};
@@ -892,12 +892,22 @@ app.get('/vlogs', async (req, res) => {
       ];
     }
 
-    const vlogs = await Vlog.find(query).sort({ createdAt: -1 });
+    // Pagination
+    const skip = parseInt(page) * parseInt(limit);
 
+    // Fetch only the slice of vlogs needed
+    const vlogs = await Vlog.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Format with like count and comments
     const formatted = await Promise.all(
       vlogs.map(async vlog => {
         const likeCount = await Like.countDocuments({ vlogId: vlog._id });
-        const comments = await Comment.find({ vlogId: vlog._id }).sort({ createdAt: 1 });
+        const comments = await Comment.find({ vlogId: vlog._id })
+          .sort({ createdAt: 1 })
+          .limit(5); // optionally limit comments here
         return {
           _id: vlog._id,
           userEmail: vlog.userEmail,
@@ -905,7 +915,7 @@ app.get('/vlogs', async (req, res) => {
           title: vlog.title,
           description: vlog.description,
           tags: vlog.tags,
-          imageUrl: vlog.imageUrl,  // <-- Already full CDN URL
+          imageUrl: vlog.imageUrl, // CDN URL
           createdAt: vlog.createdAt,
           likeCount,
           comments
@@ -919,6 +929,7 @@ app.get('/vlogs', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch vlogs' });
   }
 });
+
 
 // ---------------- Like / Unlike Vlog ----------------
 app.post('/vlogs/:id/like', async (req, res) => {
@@ -983,6 +994,95 @@ app.get('/vlogs/:id/likes', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch likes' });
+  }
+});
+// GET /get-user-vlogs?userEmail=...&page=0&limit=4
+app.get('/get-user-vlogs', async (req, res) => {
+  try {
+    const { userEmail, page = 0, limit = 4 } = req.query;
+    if (!userEmail) return res.status(400).json({ error: "User email required" });
+
+    const skip = parseInt(page) * parseInt(limit);
+
+    const userVlogs = await Vlog.find({ userEmail })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const formatted = await Promise.all(
+      userVlogs.map(async (vlog) => {
+        const likeCount = await Like.countDocuments({ vlogId: vlog._id });
+        const comments = await Comment.find({ vlogId: vlog._id })
+          .sort({ createdAt: 1 })
+          .limit(5);
+        return {
+          _id: vlog._id,
+          userEmail: vlog.userEmail,
+          userName: vlog.userName,
+          title: vlog.title,
+          description: vlog.description,
+          tags: vlog.tags,
+          imageUrl: vlog.imageUrl,
+          createdAt: vlog.createdAt,
+          likeCount,
+          comments,
+        };
+      })
+    );
+
+    res.json({ vlogs: formatted, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch user vlogs' });
+  }
+});
+const ProfileImage = require("./models/ProfileImage");
+app.post("/profile-image", upload.single("image"), async (req, res) => {
+  try {
+    const { userEmail } = req.body;
+    if (!userEmail || !req.file) {
+      return res.status(400).json({ error: "userEmail and image are required" });
+    }
+
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload_stream(
+      { folder: "profile_images" },
+      async (error, cloudRes) => {
+        if (error) {
+          console.error(error);
+          return res.status(500).json({ error: "Cloudinary upload failed" });
+        }
+
+        // Check if profile exists
+        let profile = await ProfileImage.findOne({ userEmail });
+
+        if (profile) {
+          // Update existing
+          profile.profileImageUrl = cloudRes.secure_url;
+          await profile.save();
+        } else {
+          // Create new
+          profile = new ProfileImage({
+            userEmail,
+            profileImageUrl: cloudRes.secure_url,
+          });
+          await profile.save();
+        }
+
+        // Return updated image URL
+        res.json({
+          message: "Profile image saved successfully",
+          profileImageUrl: profile.profileImageUrl
+        });
+      }
+    );
+
+    // Pipe buffer to Cloudinary upload stream
+    result.end(req.file.buffer);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to add/update profile image" });
   }
 });
 
