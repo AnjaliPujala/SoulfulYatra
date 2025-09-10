@@ -931,6 +931,9 @@ app.get('/vlogs', async (req, res) => {
 });
 
 
+// make sure you import your helper:
+const sendNotification = require('./helpers/sendNotification');
+
 // ---------------- Like / Unlike Vlog ----------------
 app.post('/vlogs/:id/like', async (req, res) => {
   try {
@@ -938,12 +941,24 @@ app.post('/vlogs/:id/like', async (req, res) => {
     const { userEmail, userName } = req.body;
     if (!userEmail) return res.status(400).json({ error: 'User email required' });
 
+    const vlog = await Vlog.findById(vlogId);
+    if (!vlog) return res.status(404).json({ error: 'Vlog not found' });
+
     const existing = await Like.findOne({ vlogId, userEmail });
     if (existing) {
       await existing.deleteOne();
       return res.json({ message: 'Vlog unliked' });
     } else {
       await Like.create({ vlogId, userEmail, userName });
+
+      // 🔔 Send notification to vlog owner (if not self-like)
+      if (vlog.userEmail !== userEmail) {
+        await sendNotification(vlog.userEmail, {
+          title: "New Like on Your Vlog ❤️",
+          body: `${userName} liked your vlog: ${vlog.title}`
+        });
+      }
+
       return res.json({ message: 'Vlog liked' });
     }
   } catch (err) {
@@ -959,7 +974,19 @@ app.post('/vlogs/:id/comment', async (req, res) => {
     const { userEmail, userName, text } = req.body;
     if (!userEmail || !text || !userName) return res.status(400).json({ error: 'Missing fields' });
 
+    const vlog = await Vlog.findById(vlogId);
+    if (!vlog) return res.status(404).json({ error: 'Vlog not found' });
+
     const comment = await Comment.create({ vlogId, userEmail, userName, text });
+
+    // 🔔 Send notification to vlog owner (if not self-comment)
+    if (vlog.userEmail !== userEmail) {
+      await sendNotification(vlog.userEmail, {
+        title: "New Comment on Your Vlog 💬",
+        body: `${userName} commented: "${text}"`
+      });
+    }
+
     res.status(201).json({ message: 'Comment added', comment });
   } catch (err) {
     console.error(err);
