@@ -868,6 +868,7 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
       tags: tags ? tags.split(',').map(t => t.trim()) : [],
       imageUrl: cloudUrl // <-- Store Cloudinary URL directly
     });
+    console.log(newVlog);
 
     await newVlog.save();
     res.status(201).json({ message: 'Vlog uploaded successfully', vlog: newVlog });
