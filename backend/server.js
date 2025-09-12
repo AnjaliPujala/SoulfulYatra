@@ -342,11 +342,11 @@ app.post('/generate-itinerary', async (req, res) => {
     const { user } = await getAuthenticatedUser(req, res);
     if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
 
-    const { destination, days, interests } = req.body;
+    const { destination, days, interests, lang } = req.body;
     if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
 
     const prompt = `
-Plan a ${days}-day trip to ${destination} for a user interested in ${interests || 'general activities'}.
+Plan a ${days}-day trip to ${destination} for a user interested in ${interests || 'general activities'} in language ${lang}.
 Provide the response in plain text only, without Markdown, asterisks, or headers.
 Include daily schedule, travel tips, and approximate durations.
 Please provide:
