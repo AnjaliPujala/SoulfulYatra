@@ -868,13 +868,55 @@ app.post('/create-vlog', upload.single('vlog'), async (req, res) => {
       tags: tags ? tags.split(',').map(t => t.trim()) : [],
       imageUrl: cloudUrl // <-- Store Cloudinary URL directly
     });
-    console.log(newVlog);
 
     await newVlog.save();
     res.status(201).json({ message: 'Vlog uploaded successfully', vlog: newVlog });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create vlog' });
+  }
+});
+// UPDATE VLOG
+app.put('/update-vlog/:id', upload.single('vlog'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, tags } = req.body;
+
+    // Find vlog by id
+    const vlog = await Vlog.findById(id);
+    if (!vlog) return res.status(404).json({ error: "Vlog not found" });
+
+    // Update fields
+    if (title) vlog.title = title;
+    if (description) vlog.description = description;
+    if (tags) vlog.tags = tags.split(',').map(t => t.trim());
+
+    // If user uploaded a new file, update Cloudinary URL
+    if (req.file) {
+      const cloudUrl = req.file.path || req.file.secure_url;
+      vlog.imageUrl = cloudUrl;
+    }
+
+    await vlog.save();
+    res.json({ message: "Vlog updated successfully", vlog });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update vlog" });
+  }
+});
+
+// DELETE VLOG
+app.delete('/delete-vlog/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const vlog = await Vlog.findByIdAndDelete(id);
+    if (!vlog) return res.status(404).json({ error: "Vlog not found" });
+
+    res.json({ message: "Vlog deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete vlog" });
   }
 });
 
