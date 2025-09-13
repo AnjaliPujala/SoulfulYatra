@@ -586,7 +586,53 @@ app.get('/nearby-hotels', async (req, res) => {
   }
 });
 
+app.get('/nearby-restaurants', async (req, res) => {
+  try {
+    const { lat, lon, radius = 10000 } = req.query;
+    if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
 
+    // Geoapify API for restaurants
+    const geoUrl = `https://api.geoapify.com/v2/places?categories=catering.restaurant&filter=circle:${lon},${lat},${radius}&limit=20&apiKey=${process.env.GEOAPIFY_API_KEY}`;
+    const geoRes = await fetch(geoUrl);
+    if (!geoRes.ok) throw new Error(`Geoapify API error: ${geoRes.status}`);
+    const geoJson = await geoRes.json();
+    if (!geoJson.features || geoJson.features.length === 0) return res.json({ restaurants: [] });
+
+    const restaurants = await Promise.all(
+      geoJson.features.map(async (f) => {
+        let image = null;
+        const xid = f.properties.xid;
+        let mustTry = null;
+
+        if (xid) {
+          const details = await fetchOTMXidDetails(xid);
+          image = details?.preview?.source || null;
+
+          // If available in OpenTripMap, use description text to find "must try" foods
+          if (details?.wikipedia_extracts?.text) {
+            const match = details.wikipedia_extracts.text.match(/must try[:\-]\s*([\w ,]+)/i);
+            mustTry = match ? match[1] : null;
+          }
+        }
+
+        return {
+          name: f.properties.name,
+          address: f.properties.formatted,
+          rating: 'N/A', // free APIs don’t provide ratings
+          lat: f.properties.lat,
+          lon: f.properties.lon,
+          image,
+          mustTry
+        };
+      })
+    );
+
+    res.json({ restaurants });
+  } catch (err) {
+    console.error('Error fetching nearby restaurants:', err);
+    res.status(500).json({ error: 'Failed to fetch restaurants', details: err.message });
+  }
+});
 
 // ------------------- PLACES -------------------
 async function getLatLonFromName(name) {
@@ -675,9 +721,7 @@ app.get('/get-places-by-name', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
-// ------------------- DESTINATION DETAILS -------------------
-// ------------------- TRANSPORTATION -------------------
-// Google Directions API integration for transportation options
+
 app.get('/get-transportation', async (req, res) => {
   const { user, authType } = await getAuthenticatedUser(req);
   if (!user) {
@@ -706,11 +750,11 @@ app.get('/get-transportation', async (req, res) => {
           duration: Math.round(route.duration / 60), // Convert to minutes
           distance: Math.round(route.distance / 1000), // Convert to km
           mode: 'driving',
-          estimatedCost: Math.round(route.distance / 1000 * 0.5), // Rough estimate
+          estimatedCost: Math.round(route.distance / 1000 * 1.0), // Rough estimate
           bookingUrl: `https://www.uber.com/?pickup=${origin}&dropoff=${destination}`
         },
         public_transit: {
-          duration: Math.round(route.duration / 60 * 1.5), // Assume transit takes 50% longer
+          duration: Math.round(route.duration / 60 * 2.0), // Assume transit takes 50% longer
           distance: Math.round(route.distance / 1000),
           mode: 'transit',
           estimatedCost: Math.round(route.distance / 1000 * 0.1),
