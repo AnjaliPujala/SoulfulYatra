@@ -447,45 +447,6 @@ Do NOT return anything else.`;
 });
 
 
-/**
- * Helper: geocode via Geoapify
- */
-async function geocodePlace(name) {
-  const key = process.env.GEOAPIFY_API_KEY;
-  if (!key) throw new Error("GEOAPIFY_API_KEY missing");
-  const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(name)}&limit=1&apiKey=${key}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Geoapify geocode failed: ${r.status}`);
-  const json = await r.json();
-  if (!json.features || json.features.length === 0) return null;
-  const props = json.features[0].properties;
-  return { lat: props.lat, lon: props.lon, raw: json.features[0] };
-}
-
-/**
- * Helper: fetch place details by OpenTripMap xid (returns preview + wikipedia text if available)
- */
-async function fetchOTMXidDetails(xid) {
-  const key = process.env.OPEN_TRIP_MAP_API_KEY;
-  if (!key) throw new Error("OPEN_TRIP_MAP_API_KEY missing");
-  const url = `https://api.opentripmap.com/0.1/en/places/xid/${encodeURIComponent(xid)}?apikey=${key}`;
-  const r = await fetch(url);
-  if (!r.ok) return null;
-  try {
-    const json = await r.json();
-    return json;
-  } catch (e) {
-    return null;
-  }
-}
-
-/**
- * POST /get-destination-details
- * Body: { destinations: ["Goa","Rishikesh"] }
- * Response: { results: [ { destination, coordinates, localSpots: [...], attractions: [...] }, ... ] }
- *
- * Each attraction will include name, kind, xid, and if available: image (preview.source) and description (wikipedia_extracts.text)
- */
 app.post("/get-destination-details", async (req, res) => {
   try {
     const { destinations } = req.body;
@@ -562,60 +523,70 @@ app.post("/get-destination-details", async (req, res) => {
     return res.status(500).json({ error: "Server error", details: String(err.message || err) });
   }
 });
+async function geocodePlace(name) {
+  const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(name)}&limit=1&apiKey=${process.env.GEOAPIFY_API_KEY}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Geoapify geocode failed: ${r.status}`);
+  const json = await r.json();
+  if (!json.features || json.features.length === 0) return null;
+  const props = json.features[0].properties;
+  return { lat: props.lat, lon: props.lon, raw: json.features[0] };
+}
 
+// Helper: Fetch OpenTripMap details by XID
 
-/*app.post('/generate-itinerary', async (req, res) => {
+async function fetchOTMXidDetails(xid) {
+  if (!xid) return null;
   try {
-    const auth = await validateAuth(req);
-    if (!auth.valid) return res.status(401).json({ error: 'Unauthorized' });
-
-    const { destination, days, interests, budget, travelStyle } = req.body;
-    if (!destination || !days) return res.status(400).json({ error: 'Destination and days are required' });
-
-    // Use Emergent LLM for enhanced AI features
-    const prompt = `Create a detailed ${days}-day travel itinerary for ${destination}.
-
-User Preferences:
-- Interests: ${interests || 'general activities'}
-- Budget: ${budget || 'moderate'}
-- Travel Style: ${travelStyle || 'balanced'}
-
-Please provide:
-1. Daily detailed schedule with specific timings
-2. Transportation recommendations between locations
-3. Accommodation suggestions for each area
-4. Local dining recommendations
-5. Cultural tips and local customs
-6. Budget estimates for activities
-7. Weather considerations and packing tips
-
-Format the response as a structured itinerary with clear day-by-day breakdown.`;
-
-    try {
-      // Initialize Emergent LLM Chat
-      const { LlmChat, UserMessage } = require('emergentintegrations/llm/chat');
-
-      const chat = new LlmChat(
-        process.env.EMERGENT_LLM_KEY,
-        `itinerary-${Date.now()}`,
-        "You are an expert travel planner with extensive knowledge of destinations worldwide. Provide detailed, practical, and personalized travel recommendations."
-      ).with_model("openai", "gpt-4o");
-
-      const userMessage = new UserMessage(prompt);
-      const response = await chat.send_message(userMessage);
-
-      res.json({ itinerary: response });
-    } catch (llmError) {
-      console.error('LLM error, falling back to basic response:', llmError);
-      // Fallback to basic itinerary
-      const basicItinerary = `${days}-day trip to ${destination}\n\nDay 1: Arrival and city exploration\n- Morning: Check-in to accommodation\n- Afternoon: Visit main attractions\n- Evening: Try local cuisine\n\nAdditional days would include cultural sites, local experiences, and recommended activities based on ${interests || 'general travel interests'}.`;
-      res.json({ itinerary: basicItinerary });
-    }
-  } catch (err) {
-    console.error('Itinerary generation error:', err);
-    res.status(500).json({ error: 'Failed to generate itinerary' });
+    const url = `https://api.opentripmap.com/0.1/en/places/xid/${encodeURIComponent(xid)}?apikey=${process.env.OPEN_TRIP_MAP_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
   }
-});*/
+}
+
+// GET /nearby-hotels?lat=...&lon=...&radius=...
+app.get('/nearby-hotels', async (req, res) => {
+  try {
+    const { lat, lon, radius = 10000 } = req.query;
+    if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
+
+    const geoUrl = `https://api.geoapify.com/v2/places?categories=accommodation.hotel&filter=circle:${lon},${lat},${radius}&limit=20&apiKey=${process.env.GEOAPIFY_API_KEY}`;
+    const geoRes = await fetch(geoUrl);
+    if (!geoRes.ok) throw new Error(`Geoapify API error: ${geoRes.status}`);
+    const geoJson = await geoRes.json();
+    if (!geoJson.features || geoJson.features.length === 0) return res.json({ hotels: [] });
+
+    const hotels = await Promise.all(
+      geoJson.features.map(async (f) => {
+        let image = null;
+        const xid = f.properties.xid;
+        if (xid) {
+          const details = await fetchOTMXidDetails(xid);
+          image = details?.preview?.source || null;
+        }
+
+        return {
+          name: f.properties.name,
+          address: f.properties.formatted,
+          rating: 'N/A', // ratings not available in free APIs
+          lat: f.properties.lat,
+          lon: f.properties.lon,
+          image
+        };
+      })
+    );
+
+    res.json({ hotels });
+  } catch (err) {
+    console.error('Error fetching nearby hotels:', err);
+    res.status(500).json({ error: 'Failed to fetch hotels', details: err.message });
+  }
+});
+
+
 
 // ------------------- PLACES -------------------
 async function getLatLonFromName(name) {
@@ -998,11 +969,6 @@ async function sendTripNotifications(minutesAgo = 1440) {
   }
 }
 
-// ---------- TEST PUSH: 5 minutes after save ----------
-//cron.schedule('*/1 * * * * ', () => {
-//console.log('⏰ Running test trip notification job (5 min delay)...');
-//sendTripNotifications(5); // check trips older than 5 minutes
-//});
 
 // ---------- PRODUCTION: 24 hours after save ----------
 cron.schedule('0 * * * *', () => { // every hour
