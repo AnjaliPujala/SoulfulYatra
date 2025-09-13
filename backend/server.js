@@ -380,14 +380,13 @@ Please provide:
 app.post('/suggest-places', async (req, res) => {
   try {
     const { interests } = req.body;
-
     if (!interests) {
       return res.status(400).json({ error: 'Interests are required' });
     }
 
     const prompt = `
 Suggest the top 5 vacation destinations in India for someone interested in ${interests}.
-Return only a JSON array with objects having fields: name, short_description.
+Return only a JSON array of destination names (strings). No extra text.
 `;
 
     const response = await openai.chat.completions.create({
@@ -396,17 +395,23 @@ Return only a JSON array with objects having fields: name, short_description.
         { role: "system", content: "You are a helpful travel assistant." },
         { role: "user", content: prompt }
       ],
-      response_format: { type: "json_object" } // force JSON
+      response_format: { type: "json" }
     });
 
     const aiOutput = JSON.parse(response.choices[0].message.content);
 
-    res.json({ places: aiOutput });
+    // Make sure it's an array of strings
+    if (!Array.isArray(aiOutput)) {
+      return res.status(500).json({ error: "Invalid AI response format" });
+    }
+
+    res.json({ suggestions: aiOutput });
   } catch (err) {
-    console.error('Error suggesting places:', err);
-    res.status(500).json({ error: 'Failed to suggest places' });
+    console.error("Error suggesting places:", err);
+    res.status(500).json({ error: "Failed to suggest places" });
   }
 });
+
 
 
 /*app.post('/generate-itinerary', async (req, res) => {
