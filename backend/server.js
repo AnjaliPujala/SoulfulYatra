@@ -377,41 +377,198 @@ Please provide:
 });
 
 // Suggest places in India based on interests
-app.post('/suggest-places', async (req, res) => {
+function tryParseJSON(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    // try to extract a json substring
+    const arrMatch = raw.match(/\[[\s\S]*\]/);
+    if (arrMatch) {
+      try { return JSON.parse(arrMatch[0]); } catch (e) { }
+    }
+    const objMatch = raw.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try { return JSON.parse(objMatch[0]); } catch (e) { }
+    }
+    return null;
+  }
+}
+
+/**
+ * POST /suggest-places
+ * Body: { interests: "beaches, temples" }
+ * Response: { suggestions: ["Goa","Rishikesh", ...] }
+ */
+app.post("/suggest-places", async (req, res) => {
   try {
     const { interests } = req.body;
-    if (!interests) {
-      return res.status(400).json({ error: 'Interests are required' });
+    if (!interests || !interests.trim()) {
+      return res.status(400).json({ error: "Interests are required" });
     }
 
     const prompt = `
-Suggest the top 5 vacation destinations in India for someone interested in ${interests}.
-Return only a JSON array of destination names (strings). No extra text.
+You are a travel assistant. Suggest 3-5 popular vacation destination NAMES in India only,
+matching this user's interests: "${interests}".
+Return response strictly as a JSON array of strings, e.g. ["Goa","Rishikesh","Manali"] and nothing else.
 `;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "You are a helpful travel assistant." },
+        { role: "system", content: "You are a travel assistant. Only output JSON array of place names." },
         { role: "user", content: prompt }
       ],
-      response_format: { type: "json" }
+      temperature: 0.6,
     });
 
-    const aiOutput = JSON.parse(response.choices[0].message.content);
+    const raw = response?.choices?.[0]?.message?.content;
+    console.log("[/suggest-places] OpenAI raw:", raw && raw.slice ? raw.slice(0, 800) : raw);
 
-    // Make sure it's an array of strings
-    if (!Array.isArray(aiOutput)) {
-      return res.status(500).json({ error: "Invalid AI response format" });
+    let parsed = tryParseJSON(raw);
+    // Accept either direct array or object with key "places"/"suggestions"
+    if (!parsed) return res.status(500).json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
+
+    let suggestions = [];
+    if (Array.isArray(parsed)) {
+      suggestions = parsed.map(x => typeof x === "string" ? x.trim() : (x.name || String(x))).filter(Boolean);
+    } else if (parsed.places && Array.isArray(parsed.places)) {
+      suggestions = parsed.places.map(String).filter(Boolean);
+    } else if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+      suggestions = parsed.suggestions.map(String).filter(Boolean);
+    } else {
+      // attempt to coerce if parsed is object of objects
+      const vals = Object.values(parsed).flat().filter(Boolean);
+      if (Array.isArray(vals) && vals.length) suggestions = vals.map(String);
     }
 
-    res.json({ suggestions: aiOutput });
+    if (!suggestions.length) return res.status(500).json({ error: "No suggestions extracted from AI", raw: raw?.slice?.(0, 1000) });
+
+    // Return top 5
+    suggestions = suggestions.slice(0, 5);
+    return res.json({ suggestions });
   } catch (err) {
-    console.error("Error suggesting places:", err);
-    res.status(500).json({ error: "Failed to suggest places" });
+    console.error("Error /suggest-places:", err);
+    return res.status(500).json({ error: "Server error", details: String(err.message || err) });
   }
 });
 
+
+/**
+ * Helper: geocode via Geoapify
+ */
+async function geocodePlace(name) {
+  const key = process.env.GEOAPIFY_API_KEY;
+  if (!key) throw new Error("GEOAPIFY_API_KEY missing");
+  const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(name)}&limit=1&apiKey=${key}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Geoapify geocode failed: ${r.status}`);
+  const json = await r.json();
+  if (!json.features || json.features.length === 0) return null;
+  const props = json.features[0].properties;
+  return { lat: props.lat, lon: props.lon, raw: json.features[0] };
+}
+
+/**
+ * Helper: fetch place details by OpenTripMap xid (returns preview + wikipedia text if available)
+ */
+async function fetchOTMXidDetails(xid) {
+  const key = process.env.OPEN_TRIP_MAP_API_KEY;
+  if (!key) throw new Error("OPEN_TRIP_MAP_API_KEY missing");
+  const url = `https://api.opentripmap.com/0.1/en/places/xid/${encodeURIComponent(xid)}?apikey=${key}`;
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  try {
+    const json = await r.json();
+    return json;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * POST /get-destination-details
+ * Body: { destinations: ["Goa","Rishikesh"] }
+ * Response: { results: [ { destination, coordinates, localSpots: [...], attractions: [...] }, ... ] }
+ *
+ * Each attraction will include name, kind, xid, and if available: image (preview.source) and description (wikipedia_extracts.text)
+ */
+app.post("/get-destination-details", async (req, res) => {
+  try {
+    const { destinations } = req.body;
+    if (!Array.isArray(destinations) || destinations.length === 0) {
+      return res.status(400).json({ error: "destinations array required" });
+    }
+
+    const geoKey = process.env.GEOAPIFY_API_KEY;
+    const otmKey = process.env.OPEN_TRIP_MAP_API_KEY;
+    if (!geoKey || !otmKey) return res.status(500).json({ error: "Missing GEOAPIFY_API_KEY or OPEN_TRIP_MAP_API_KEY" });
+
+    const results = [];
+    for (const dest of destinations) {
+      try {
+        const geo = await geocodePlace(dest);
+        if (!geo) { console.warn("No geocode for", dest); continue; }
+        const { lat, lon } = geo;
+
+        // Geoapify local spots (restaurants, hotels)
+        const localUrl = `https://api.geoapify.com/v2/places?categories=catering.restaurant,hospitality.hotel&filter=circle:${lon},${lat},20000&limit=10&apiKey=${geoKey}`;
+        const localRes = await fetch(localUrl);
+        const localJson = localRes.ok ? await localRes.json() : { features: [] };
+        const localSpots = (localJson.features || []).map(f => ({
+          name: f.properties?.name || "",
+          category: f.properties?.categories || [],
+          address: f.properties?.formatted || "",
+          lat: f.properties?.lat,
+          lon: f.properties?.lon,
+        }));
+
+        // OpenTripMap attractions list (radius)
+        const otmUrl = `https://api.opentripmap.com/0.1/en/places/radius?radius=20000&lon=${lon}&lat=${lat}&limit=10&apikey=${otmKey}`;
+        const otmRes = await fetch(otmUrl);
+        const otmJson = otmRes.ok ? await otmRes.json() : { features: [] };
+        const otmFeatures = otmJson.features || [];
+
+        // Enrich attractions by fetching xid-details (preview + extracts)
+        const attractions = [];
+        for (const f of otmFeatures) {
+          const props = f.properties || {};
+          const xid = props.xid;
+          const basic = { name: props.name || "", kind: props.kinds || "", xid };
+          if (xid) {
+            try {
+              const details = await fetchOTMXidDetails(xid);
+              if (details) {
+                basic.image = details.preview?.source || null;
+                basic.description = details.wikipedia_extracts?.text || details.info?.descr_long || details.info?.descr || null;
+                basic.address = details.address ? Object.values(details.address).filter(Boolean).join(", ") : null;
+              }
+            } catch (e) {
+              // ignore individual fetch errors
+            }
+          }
+          attractions.push(basic);
+        }
+
+        results.push({
+          destination: dest,
+          coordinates: { lat, lon },
+          localSpots,
+          attractions,
+        });
+
+      } catch (err) {
+        console.error("Error building details for", dest, err);
+      }
+    } // end loop
+
+    return res.json({ results });
+
+  } catch (err) {
+    console.error("Error /get-destination-details:", err);
+    return res.status(500).json({ error: "Server error", details: String(err.message || err) });
+  }
+});
 
 
 /*app.post('/generate-itinerary', async (req, res) => {
@@ -555,64 +712,6 @@ app.get('/get-places-by-name', async (req, res) => {
   }
 });
 // ------------------- DESTINATION DETAILS -------------------
-async function getDestinationDetails(destination) {
-  const geoapifyKey = process.env.GEOAPIFY_API_KEY;
-  const openTripKey = process.env.OPEN_TRIP_MAP_API_KEY;
-
-  // Step 1: Geocode with Geoapify
-  const geoUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(destination)}&apiKey=${geoapifyKey}`;
-  const geoRes = await fetch(geoUrl);
-  if (!geoRes.ok) throw new Error(`Geoapify geocode failed for ${destination}`);
-  const geoData = await geoRes.json();
-  if (!geoData.features.length) return null;
-
-  const { lat, lon } = geoData.features[0].properties;
-
-  // Step 2: Get local spots from Geoapify (restaurants, hotels, etc.)
-  const localUrl = `https://api.geoapify.com/v2/places?categories=catering.restaurant,hospitality.hotel&filter=circle:${lon},${lat},20000&limit=10&apiKey=${geoapifyKey}`;
-  const localRes = await fetch(localUrl);
-  const localData = localRes.ok ? await localRes.json() : { features: [] };
-
-  // Step 3: Get attractions from OpenTripMap
-  const otmUrl = `https://api.opentripmap.com/0.1/en/places/radius?radius=20000&lon=${lon}&lat=${lat}&limit=10&apikey=${openTripKey}`;
-  const otmRes = await fetch(otmUrl);
-  const otmData = otmRes.ok ? await otmRes.json() : { features: [] };
-
-  // Step 4: Format response
-  return {
-    destination,
-    coordinates: { lat, lon },
-    localSpots: localData.features.map(f => ({
-      name: f.properties.name,
-      category: f.properties.categories,
-      address: f.properties.address_line1 || f.properties.formatted,
-    })),
-    attractions: otmData.features.map(f => ({
-      name: f.properties.name,
-      kind: f.properties.kinds,
-      xid: f.properties.xid,
-    })),
-  };
-}
-app.post('/get-destination-details', async (req, res) => {
-  const { destinations } = req.body;
-  if (!destinations || !Array.isArray(destinations)) {
-    return res.status(400).json({ error: 'Destinations array is required' });
-  }
-
-  try {
-    const results = [];
-    for (const dest of destinations) {
-      const details = await getDestinationDetails(dest);
-      if (details) results.push(details);
-    }
-    res.json({ results });
-  } catch (err) {
-    console.error('Error fetching destination details:', err);
-    res.status(500).json({ error: 'Failed to fetch destination details' });
-  }
-});
-
 // ------------------- TRANSPORTATION -------------------
 // Google Directions API integration for transportation options
 app.get('/get-transportation', async (req, res) => {
