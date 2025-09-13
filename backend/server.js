@@ -376,6 +376,50 @@ Please provide:
   }
 });
 
+// Suggest places in India based on interests
+app.post('/suggest-places', async (req, res) => {
+  try {
+    const { user } = await getAuthenticatedUser(req, res);
+    if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+
+    const { interests } = req.body;
+    if (!interests) return res.status(400).json({ error: 'Interests are required' });
+
+    const prompt = `
+Suggest the best tourist places in India based on these interests: ${interests}.
+For each place, include:
+1. Name of the place
+2. Short description
+3. State or city where it is located
+4. Type of attraction (historical, adventure, spiritual, nature, etc.)
+Provide only 5–7 highly relevant places.
+Response must be in clean JSON format with keys: name, description, location, type.
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "You are a travel guide suggesting Indian destinations." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.7
+    });
+
+    let suggestions;
+    try {
+      suggestions = JSON.parse(response.choices[0].message.content);
+    } catch (err) {
+      // fallback if model doesn't return strict JSON
+      suggestions = { raw: response.choices[0].message.content };
+    }
+
+    res.json({ suggestions });
+
+  } catch (err) {
+    console.error('Place suggestion error:', err);
+    res.status(500).json({ error: 'Failed to generate place suggestions' });
+  }
+});
 
 /*app.post('/generate-itinerary', async (req, res) => {
   try {
@@ -515,6 +559,64 @@ app.get('/get-places-by-name', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+// ------------------- DESTINATION DETAILS -------------------
+async function getDestinationDetails(destination) {
+  const geoapifyKey = process.env.GEOAPIFY_API_KEY;
+  const openTripKey = process.env.OPEN_TRIP_MAP_API_KEY;
+
+  // Step 1: Geocode with Geoapify
+  const geoUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(destination)}&apiKey=${geoapifyKey}`;
+  const geoRes = await fetch(geoUrl);
+  if (!geoRes.ok) throw new Error(`Geoapify geocode failed for ${destination}`);
+  const geoData = await geoRes.json();
+  if (!geoData.features.length) return null;
+
+  const { lat, lon } = geoData.features[0].properties;
+
+  // Step 2: Get local spots from Geoapify (restaurants, hotels, etc.)
+  const localUrl = `https://api.geoapify.com/v2/places?categories=catering.restaurant,hospitality.hotel&filter=circle:${lon},${lat},20000&limit=10&apiKey=${geoapifyKey}`;
+  const localRes = await fetch(localUrl);
+  const localData = localRes.ok ? await localRes.json() : { features: [] };
+
+  // Step 3: Get attractions from OpenTripMap
+  const otmUrl = `https://api.opentripmap.com/0.1/en/places/radius?radius=20000&lon=${lon}&lat=${lat}&limit=10&apikey=${openTripKey}`;
+  const otmRes = await fetch(otmUrl);
+  const otmData = otmRes.ok ? await otmRes.json() : { features: [] };
+
+  // Step 4: Format response
+  return {
+    destination,
+    coordinates: { lat, lon },
+    localSpots: localData.features.map(f => ({
+      name: f.properties.name,
+      category: f.properties.categories,
+      address: f.properties.address_line1 || f.properties.formatted,
+    })),
+    attractions: otmData.features.map(f => ({
+      name: f.properties.name,
+      kind: f.properties.kinds,
+      xid: f.properties.xid,
+    })),
+  };
+}
+app.post('/get-destination-details', async (req, res) => {
+  const { destinations } = req.body;
+  if (!destinations || !Array.isArray(destinations)) {
+    return res.status(400).json({ error: 'Destinations array is required' });
+  }
+
+  try {
+    const results = [];
+    for (const dest of destinations) {
+      const details = await getDestinationDetails(dest);
+      if (details) results.push(details);
+    }
+    res.json({ results });
+  } catch (err) {
+    console.error('Error fetching destination details:', err);
+    res.status(500).json({ error: 'Failed to fetch destination details' });
   }
 });
 
