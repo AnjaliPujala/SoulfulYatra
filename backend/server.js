@@ -408,8 +408,8 @@ app.post("/suggest-places", async (req, res) => {
     }
 
     const prompt = `
-You are a travel assistant. Suggest 3-5 popular vacation destinations in India
-matching this user's interests: "${interests}".
+You are a travel assistant. Suggest 10 popular vacation destinations in India
+matching this user's interests: "${interests}" with 100 words of description.
 Return a JSON array of objects strictly in this format:
 [
   { "destination": "Goa", "description": "Beautiful beaches and vibrant nightlife." },
