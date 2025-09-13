@@ -379,47 +379,35 @@ Please provide:
 // Suggest places in India based on interests
 app.post('/suggest-places', async (req, res) => {
   try {
-    const { user } = await getAuthenticatedUser(req, res);
-    if (!user) return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
-
     const { interests } = req.body;
-    if (!interests) return res.status(400).json({ error: 'Interests are required' });
+
+    if (!interests) {
+      return res.status(400).json({ error: 'Interests are required' });
+    }
 
     const prompt = `
-Suggest the best tourist places in India based on these interests: ${interests}.
-For each place, include:
-1. Name of the place
-2. Short description
-3. State or city where it is located
-4. Type of attraction (historical, adventure, spiritual, nature, etc.)
-Provide only 5–7 highly relevant places.
-Response must be in clean JSON format with keys: name, description, location, type.
+Suggest the top 5 vacation destinations in India for someone interested in ${interests}.
+Return only a JSON array with objects having fields: name, short_description.
 `;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "You are a travel guide suggesting Indian destinations." },
+        { role: "system", content: "You are a helpful travel assistant." },
         { role: "user", content: prompt }
       ],
-      temperature: 0.7
+      response_format: { type: "json_object" } // force JSON
     });
 
-    let suggestions;
-    try {
-      suggestions = JSON.parse(response.choices[0].message.content);
-    } catch (err) {
-      // fallback if model doesn't return strict JSON
-      suggestions = { raw: response.choices[0].message.content };
-    }
+    const aiOutput = JSON.parse(response.choices[0].message.content);
 
-    res.json({ suggestions });
-
+    res.json({ places: aiOutput });
   } catch (err) {
-    console.error('Place suggestion error:', err);
-    res.status(500).json({ error: 'Failed to generate place suggestions' });
+    console.error('Error suggesting places:', err);
+    res.status(500).json({ error: 'Failed to suggest places' });
   }
 });
+
 
 /*app.post('/generate-itinerary', async (req, res) => {
   try {
