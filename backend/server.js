@@ -408,45 +408,38 @@ app.post("/suggest-places", async (req, res) => {
     }
 
     const prompt = `
-You are a travel assistant. Suggest 3-5 popular vacation destination NAMES in India only,
+You are a travel assistant. Suggest 3-5 popular vacation destinations in India
 matching this user's interests: "${interests}".
-Return response strictly as a JSON array of strings, e.g. ["Goa","Rishikesh","Manali"] and nothing else.
-`;
+Return a JSON array of objects strictly in this format:
+[
+  { "destination": "Goa", "description": "Beautiful beaches and vibrant nightlife." },
+  { "destination": "Rishikesh", "description": "Spiritual city on the Ganges, ideal for yoga and adventure." }
+]
+Do NOT return anything else.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "You are a travel assistant. Only output JSON array of place names." },
+        { role: "system", content: "You are a travel assistant. Only output JSON array of {destination, description}." },
         { role: "user", content: prompt }
       ],
       temperature: 0.6,
     });
 
     const raw = response?.choices?.[0]?.message?.content;
-    console.log("[/suggest-places] OpenAI raw:", raw && raw.slice ? raw.slice(0, 800) : raw);
+    const parsed = tryParseJSON(raw);
 
-    let parsed = tryParseJSON(raw);
-    // Accept either direct array or object with key "places"/"suggestions"
-    if (!parsed) return res.status(500).json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
-
-    let suggestions = [];
-    if (Array.isArray(parsed)) {
-      suggestions = parsed.map(x => typeof x === "string" ? x.trim() : (x.name || String(x))).filter(Boolean);
-    } else if (parsed.places && Array.isArray(parsed.places)) {
-      suggestions = parsed.places.map(String).filter(Boolean);
-    } else if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
-      suggestions = parsed.suggestions.map(String).filter(Boolean);
-    } else {
-      // attempt to coerce if parsed is object of objects
-      const vals = Object.values(parsed).flat().filter(Boolean);
-      if (Array.isArray(vals) && vals.length) suggestions = vals.map(String);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return res.status(500).json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
     }
 
-    if (!suggestions.length) return res.status(500).json({ error: "No suggestions extracted from AI", raw: raw?.slice?.(0, 1000) });
+    const suggestions = parsed.map(item => ({
+      destination: item.destination || "Unknown Place",
+      description: item.description || "",
+    })).slice(0, 5);
 
-    // Return top 5
-    suggestions = suggestions.slice(0, 5);
-    return res.json({ suggestions });
+    res.json({ suggestions });
+
   } catch (err) {
     console.error("Error /suggest-places:", err);
     return res.status(500).json({ error: "Server error", details: String(err.message || err) });
