@@ -570,7 +570,8 @@ Do NOT return anything else.
   }
 });
 // 📍 Famous Foods + Restaurants Endpoint
-app.post("/suggest-foods-restaurants", async (req, res) => {
+// backend/server.js
+app.post("/suggest-local-foods", async (req, res) => {
   try {
     const { lat, lon } = req.body;
 
@@ -580,14 +581,15 @@ app.post("/suggest-foods-restaurants", async (req, res) => {
         .json({ error: "Latitude and longitude are required" });
     }
 
-    // 🔄 Reverse geocoding
+    // 🔄 Get city/state from coordinates
     const { city, state } = await reverseGeocode(lat, lon);
 
+    // Prompt for OpenAI to suggest foods & restaurants
     const prompt = `
-You are a food and travel assistant. Based on the coordinates (${lat}, ${lon}) near "${city}, ${state}", do the following:
+You are a food and travel assistant. Based on the coordinates (${lat}, ${lon}) near "${city}, ${state}":
 
-1. Suggest 5 famous local foods in this region with a short description (2–3 sentences each).  
-2. Suggest 5 popular restaurants near "${city}, ${state}" with their type of cuisine and what they are best known for.  
+1. Suggest 5 famous local foods in this area with short 2–3 sentence descriptions.
+2. Suggest 5 popular restaurants in this area with cuisine type and what they are best known for.
 
 Return a JSON object strictly in this format:
 {
@@ -617,23 +619,24 @@ Do NOT return anything else.
     const raw = response?.choices?.[0]?.message?.content;
     const parsed = tryParseJSON(raw);
 
-    if (!parsed || !parsed.foods) {
+    if (!parsed || !parsed.foods || !parsed.restaurants) {
       return res
         .status(500)
         .json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
     }
 
-    const foods = parsed.foods?.slice(0, 5) || [];
-    const restaurants = parsed.restaurants?.slice(0, 5) || [];
+    const foods = parsed.foods.slice(0, 5);
+    const restaurants = parsed.restaurants.slice(0, 5);
 
     res.json({ city, state, foods, restaurants });
   } catch (err) {
-    console.error("Error /suggest-foods-restaurants:", err);
+    console.error("Error /suggest-local-foods:", err);
     return res
       .status(500)
       .json({ error: "Server error", details: String(err.message || err) });
   }
 });
+
 
 
 app.post("/get-destination-details", async (req, res) => {
