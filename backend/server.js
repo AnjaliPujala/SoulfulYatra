@@ -405,22 +405,36 @@ function tryParseJSON(raw) {
 async function reverseGeocode(lat, lon) {
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`,
+      {
+        headers: {
+          "User-Agent": "travel-app/1.0 (anjalipujala001@gmail.com)", // required by Nominatim
+        },
+      }
     );
+
+    if (!res.ok) {
+      throw new Error(`HTTP error ${res.status}`);
+    }
+
     const data = await res.json();
+
     const city =
       data.address.city ||
       data.address.town ||
       data.address.village ||
       data.address.hamlet ||
       "Unknown City";
+
     const state = data.address.state || "Unknown State";
+
     return { city, state };
   } catch (err) {
     console.error("Reverse geocoding failed:", err);
     return { city: "Unknown City", state: "Unknown State" };
   }
 }
+
 
 app.post("/suggest-places", async (req, res) => {
   try {
