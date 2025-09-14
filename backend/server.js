@@ -400,22 +400,41 @@ function tryParseJSON(raw) {
  * Body: { interests: "beaches, temples" }
  * Response: { suggestions: ["Goa","Rishikesh", ...] }
  */
+// helper: reverse geocode coords -> nearest city
+async function reverseGeocode(lat, lon) {
+  const geoKey = process.env.GEOAPIFY_API_KEY;
+  const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lon}&apiKey=${geoKey}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.features?.[0]?.properties?.city || data.features?.[0]?.properties?.formatted || null;
+}
+
 app.post("/suggest-places", async (req, res) => {
   try {
-    const { interests } = req.body;
+    const { interests, lat, lon } = req.body;
     if (!interests || !interests.trim()) {
       return res.status(400).json({ error: "Interests are required" });
     }
 
+    let cityName = null;
+    if (lat && lon) {
+      cityName = await reverseGeocode(lat, lon);
+    }
+
+    const locationContext = cityName
+      ? `near ${cityName}`
+      : "in India";
+
     const prompt = `
-You are a travel assistant. Suggest 10 popular vacation destinations in India
-matching this user's interests: "${interests}" with 100 words of description.
+You are a travel assistant. Suggest 10 popular vacation destinations ${locationContext} 
+matching this user's interests: "${interests}". Each must include ~100 words description. 
 Return a JSON array of objects strictly in this format:
 [
-  { "destination": "Goa", "description": "Beautiful beaches and vibrant nightlife." },
-  { "destination": "Rishikesh", "description": "Spiritual city on the Ganges, ideal for yoga and adventure." }
-]
-Do NOT return anything else.`;
+  { "destination": "Name", "description": "Details..." }
+] 
+Do NOT return anything else.
+`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -438,7 +457,10 @@ Do NOT return anything else.`;
       description: item.description || "",
     })).slice(0, 5);
 
-    res.json({ suggestions });
+    res.json({
+      city: cityName,
+      suggestions
+    });
 
   } catch (err) {
     console.error("Error /suggest-places:", err);
