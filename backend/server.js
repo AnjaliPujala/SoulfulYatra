@@ -570,7 +570,7 @@ Do NOT return anything else.
   }
 });
 // 📍 Famous Foods + Restaurants Endpoint
-// backend/server.js
+
 app.post("/suggest-local-foods", async (req, res) => {
   try {
     const { lat, lon } = req.body;
