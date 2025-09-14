@@ -401,26 +401,42 @@ function tryParseJSON(raw) {
  * Response: { suggestions: ["Goa","Rishikesh", ...] }
  */
 // helper: reverse geocode coords -> nearest city
+import fetch from "node-fetch";
+
 async function reverseGeocode(lat, lon) {
-  const geoKey = process.env.GEOAPIFY_API_KEY;
-  const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lon}&apiKey=${geoKey}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.features?.[0]?.properties?.city || data.features?.[0]?.properties?.formatted || null;
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+    );
+    const data = await res.json();
+    const city =
+      data.address.city ||
+      data.address.town ||
+      data.address.village ||
+      data.address.hamlet ||
+      "Unknown City";
+    const state = data.address.state || "Unknown State";
+    return { city, state };
+  } catch (err) {
+    console.error("Reverse geocoding failed:", err);
+    return { city: "Unknown City", state: "Unknown State" };
+  }
 }
 
 app.post("/suggest-places", async (req, res) => {
   try {
-    const { lat, lon, city, interests } = req.body;
+    const { lat, lon, interests } = req.body;
 
-    if (!lat || !lon || !city) {
-      return res.status(400).json({ error: "Latitude, longitude, and city are required" });
+    if (!lat || !lon) {
+      return res.status(400).json({ error: "Latitude and longitude are required" });
     }
+
+    // 🔄 Get city/state from reverse geocoding
+    const { city, state } = await reverseGeocode(lat, lon);
 
     const prompt = `
 You are a travel assistant. Suggest 10 vacation destinations within 50 km radius
-from these coordinates: (${lat}, ${lon}) near "${city}", matching this user's interests: "${interests || "general"}".
+from these coordinates: (${lat}, ${lon}) near "${city}, ${state}", matching this user's interests: "${interests || "general"}".
 For each, give a 40–50 word description.
 
 Return a JSON array of objects strictly in this format:
@@ -443,21 +459,27 @@ Do NOT return anything else.
     const parsed = tryParseJSON(raw);
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return res.status(500).json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
+      return res
+        .status(500)
+        .json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
     }
 
-    const suggestions = parsed.map(item => ({
-      destination: item.destination || "Unknown Place",
-      description: item.description || "",
-    })).slice(0, 5);
+    const suggestions = parsed
+      .map((item) => ({
+        destination: item.destination || "Unknown Place",
+        description: item.description || "",
+      }))
+      .slice(0, 5);
 
-    res.json({ suggestions });
-
+    res.json({ city, state, suggestions });
   } catch (err) {
     console.error("Error /suggest-places:", err);
-    return res.status(500).json({ error: "Server error", details: String(err.message || err) });
+    return res
+      .status(500)
+      .json({ error: "Server error", details: String(err.message || err) });
   }
 });
+
 
 
 app.post("/get-destination-details", async (req, res) => {
