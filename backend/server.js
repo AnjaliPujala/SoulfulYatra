@@ -401,7 +401,6 @@ function tryParseJSON(raw) {
  * Response: { suggestions: ["Goa","Rishikesh", ...] }
  */
 // helper: reverse geocode coords -> nearest city
-import fetch from "node-fetch";
 
 async function reverseGeocode(lat, lon) {
   try {
