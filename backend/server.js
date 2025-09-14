@@ -412,27 +412,21 @@ async function reverseGeocode(lat, lon) {
 
 app.post("/suggest-places", async (req, res) => {
   try {
-    const { interests, lat, lon } = req.body;
-    if (!interests || !interests.trim()) {
-      return res.status(400).json({ error: "Interests are required" });
-    }
+    const { lat, lon, city, interests } = req.body;
 
-    let cityName = null;
-    if (lat && lon) {
-      cityName = await reverseGeocode(lat, lon);
+    if (!lat || !lon || !city) {
+      return res.status(400).json({ error: "Latitude, longitude, and city are required" });
     }
-
-    const locationContext = cityName
-      ? `near ${cityName}`
-      : "in India";
 
     const prompt = `
-You are a travel assistant. Suggest 10 popular vacation destinations ${locationContext} 
-matching this user's interests: "${interests}". Each must include ~100 words description. 
+You are a travel assistant. Suggest 10 vacation destinations within 50 km radius
+from these coordinates: (${lat}, ${lon}) near "${city}", matching this user's interests: "${interests || "general"}".
+For each, give a 40–50 word description.
+
 Return a JSON array of objects strictly in this format:
 [
-  { "destination": "Name", "description": "Details..." }
-] 
+  { "destination": "Place Name", "description": "About the place." }
+]
 Do NOT return anything else.
 `;
 
@@ -457,10 +451,7 @@ Do NOT return anything else.
       description: item.description || "",
     })).slice(0, 5);
 
-    res.json({
-      city: cityName,
-      suggestions
-    });
+    res.json({ suggestions });
 
   } catch (err) {
     console.error("Error /suggest-places:", err);
