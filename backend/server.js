@@ -586,6 +586,7 @@ app.post("/suggest-local-foods", async (req, res) => {
 
     // Prompt for OpenAI to suggest foods & restaurants
     const prompt = `
+    rapid fire for you, get foods and restaurants for "${city}, ${state}" from internet.
 You are a food and travel assistant. Based on the coordinates (${lat}, ${lon}) near "${city}, ${state}":
 
 1. Suggest 5 famous local foods in this area with short 2–3 sentence descriptions.
