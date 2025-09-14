@@ -436,11 +436,11 @@ app.post("/suggest-places", async (req, res) => {
     const prompt = `
 You are a travel assistant. Suggest 10 vacation destinations within 50 km radius
 from these coordinates: (${lat}, ${lon}) near "${city}, ${state}", matching this user's interests: "${interests || "general"}".
-For each, give a 40–50 word description.
+For each, give a 80-100 word description.
 
 Return a JSON array of objects strictly in this format:
 [
-  { "destination": "Place Name", "description": "About the place." }
+  { "destination": "Place Name", "description": "About the place, best time to visit" }
 ]
 Do NOT return anything else.
 `;
@@ -472,13 +472,154 @@ Do NOT return anything else.
 
     res.json({ city, state, suggestions });
   } catch (err) {
-    console.error("Error /suggest-places:", err);
+    //console.error("Error /suggest-places:", err);
     return res
       .status(500)
       .json({ error: "Server error", details: String(err.message || err) });
   }
 });
 
+app.post("/suggest-hotels", async (req, res) => {
+  try {
+    const { lat, lon } = req.body;
+
+    if (!lat || !lon) {
+      return res
+        .status(400)
+        .json({ error: "Latitude and longitude are required" });
+    }
+
+    // 🔄 Get city/state from reverse geocoding
+    const { city, state } = await reverseGeocode(lat, lon);
+
+    const prompt = `
+You are a travel assistant. Suggest 10 of the best hotels within 10 km radius 
+from these coordinates: (${lat}, ${lon}) near "${city}, ${state}".
+For each hotel, include:
+- Hotel name
+- Rating (out of 5, decimal allowed)
+- Short summary of reviews (1–2 sentences)
+- Address
+- Distance from current location in km
+
+Return a JSON array of objects strictly in this format:
+[
+  { 
+    "hotel": "Hotel Name", 
+    "rating": 4.5, 
+    "reviews": "Guests love the clean rooms and friendly staff.", 
+    "address": "123 Main Road, ${city}", 
+    "distance": "3.2 km"
+  }
+]
+Do NOT return anything else.
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a travel assistant. Only output JSON array of {hotel, rating, reviews, address, distance}.",
+        },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.6,
+    });
+
+    const raw = response?.choices?.[0]?.message?.content;
+    const parsed = tryParseJSON(raw);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return res
+        .status(500)
+        .json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
+    }
+
+    const hotels = parsed
+      .map((item) => ({
+        hotel: item.hotel || "Unknown Hotel",
+        rating: item.rating || "N/A",
+        reviews: item.reviews || "",
+        address: item.address || `${city}, ${state}`,
+        distance: item.distance || "Unknown",
+      }))
+      .slice(0, 5);
+
+    res.json({ city, state, hotels });
+  } catch (err) {
+    console.error("Error /suggest-hotels:", err);
+    return res
+      .status(500)
+      .json({ error: "Server error", details: String(err.message || err) });
+  }
+});
+// 📍 Famous Foods + Restaurants Endpoint
+app.post("/suggest-foods-restaurants", async (req, res) => {
+  try {
+    const { lat, lon } = req.body;
+
+    if (!lat || !lon) {
+      return res
+        .status(400)
+        .json({ error: "Latitude and longitude are required" });
+    }
+
+    // 🔄 Reverse geocoding
+    const { city, state } = await reverseGeocode(lat, lon);
+
+    const prompt = `
+You are a food and travel assistant. Based on the coordinates (${lat}, ${lon}) near "${city}, ${state}", do the following:
+
+1. Suggest 5 famous local foods in this region with a short description (2–3 sentences each).  
+2. Suggest 5 popular restaurants near "${city}, ${state}" with their type of cuisine and what they are best known for.  
+
+Return a JSON object strictly in this format:
+{
+  "foods": [
+    { "food": "Food Name", "description": "About the food" }
+  ],
+  "restaurants": [
+    { "restaurant": "Restaurant Name", "cuisine": "Type", "description": "About the restaurant" }
+  ]
+}
+Do NOT return anything else.
+`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a travel/food assistant. Only output JSON with keys: foods, restaurants.",
+        },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.6,
+    });
+
+    const raw = response?.choices?.[0]?.message?.content;
+    const parsed = tryParseJSON(raw);
+
+    if (!parsed || !parsed.foods) {
+      return res
+        .status(500)
+        .json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
+    }
+
+    const foods = parsed.foods?.slice(0, 5) || [];
+    const restaurants = parsed.restaurants?.slice(0, 5) || [];
+
+    res.json({ city, state, foods, restaurants });
+  } catch (err) {
+    console.error("Error /suggest-foods-restaurants:", err);
+    return res
+      .status(500)
+      .json({ error: "Server error", details: String(err.message || err) });
+  }
+});
 
 
 app.post("/get-destination-details", async (req, res) => {
