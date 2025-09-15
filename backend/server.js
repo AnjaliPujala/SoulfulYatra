@@ -218,7 +218,7 @@ app.post('/valid-login', async (req, res) => {
 
     res.json({
       message: "Login successful",
-      user: { name: user.name, email: user.email, phone: user.phone },
+      user: { name: user.name, email: user.email, phone: user.phone, role: user.role },
       accessToken
     });
 
