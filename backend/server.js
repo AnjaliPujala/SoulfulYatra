@@ -1615,6 +1615,69 @@ app.patch("/bookings/:id", async (req, res) => {
   }
 });
 
+
+// ---------------- Availability APIs ----------------
+const Availability = require('./models/Availability');
+
+// Get guide availability
+app.get("/availability", async (req, res) => {
+  try {
+    const { guideEmail } = req.query;
+    if (!guideEmail) return res.status(400).json({ error: "guideEmail required" });
+
+    const availability = await Availability.findOne({ guideEmail });
+    res.json({ availableDates: availability ? availability.availableDates : [] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch availability" });
+  }
+});
+
+// Add new dates
+app.post("/availability", async (req, res) => {
+  try {
+    const { guideEmail, dates } = req.body;
+    if (!guideEmail || !dates || !Array.isArray(dates)) {
+      return res.status(400).json({ error: "guideEmail and dates array required" });
+    }
+
+    let availability = await Availability.findOne({ guideEmail });
+    if (!availability) {
+      availability = new Availability({ guideEmail, availableDates: dates });
+    } else {
+      const newDates = dates.map(d => new Date(d));
+      availability.availableDates = Array.from(new Set([...availability.availableDates, ...newDates]));
+    }
+
+    await availability.save();
+    res.json({ message: "Availability updated", availableDates: availability.availableDates });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update availability" });
+  }
+});
+
+// Remove a date
+app.delete("/availability", async (req, res) => {
+  try {
+    const { guideEmail, date } = req.body;
+    if (!guideEmail || !date) return res.status(400).json({ error: "guideEmail and date required" });
+
+    const availability = await Availability.findOne({ guideEmail });
+    if (!availability) return res.status(404).json({ error: "Availability not found" });
+
+    availability.availableDates = availability.availableDates.filter(
+      d => d.toISOString() !== new Date(date).toISOString()
+    );
+    await availability.save();
+
+    res.json({ message: "Date removed", availableDates: availability.availableDates });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to remove date" });
+  }
+});
+
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
