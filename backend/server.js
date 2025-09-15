@@ -1678,6 +1678,29 @@ app.delete("/availability", async (req, res) => {
   }
 });
 
+const Guide = require("./models/Guide");
+app.get("/guides", async (req, res) => {
+  try {
+    const guides = await Guide.find(); // fetch all guides
+    res.status(200).json({ success: true, guides });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// ------------------ Get Guides by Place ------------------
+app.get("/guides/place/:place", async (req, res) => {
+  const { place } = req.params;
+  try {
+    // Case-insensitive search for place
+    const guides = await Guide.find({ places: { $regex: new RegExp(`^${place}$`, "i") } });
+    res.status(200).json({ success: true, guides });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
