@@ -1570,7 +1570,7 @@ app.get('/check', async (req, res) => {
 
 
 //-----------------------------------GUIDES-----------------------
-const Booking = require("./models/Booking");
+const Booking = require("./models/Bookings");
 // ensure you import your model
 
 // ------------------ Get Bookings ------------------
