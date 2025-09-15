@@ -1,4 +1,4 @@
-// models/Booking.js
+// models/Bookings.js
 const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema(
@@ -37,4 +37,5 @@ const bookingSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-export default mongoose.model("Booking", bookingSchema);
+// Use CommonJS export
+module.exports = mongoose.model("Booking", bookingSchema);
