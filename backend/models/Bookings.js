@@ -1,5 +1,5 @@
 // models/Booking.js
-import mongoose from "mongoose";
+const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema(
     {
