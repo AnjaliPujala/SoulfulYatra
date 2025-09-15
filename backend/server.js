@@ -1570,7 +1570,8 @@ app.get('/check', async (req, res) => {
 
 
 //-----------------------------------GUIDES-----------------------
-import Booking from "./models/Booking.js"; // ensure you import your model
+const Booking = require("./models/Booking");
+// ensure you import your model
 
 // ------------------ Get Bookings ------------------
 app.get("/bookings", async (req, res) => {
