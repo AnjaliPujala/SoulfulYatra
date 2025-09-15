@@ -1568,6 +1568,52 @@ app.get('/check', async (req, res) => {
   }
 });
 
+
+//-----------------------------------GUIDES-----------------------
+import Booking from "./models/Booking.js"; // ensure you import your model
+
+// ------------------ Get Bookings ------------------
+app.get("/bookings", async (req, res) => {
+  try {
+    let { guideEmail } = req.query;
+    if (!guideEmail) return res.status(400).json({ error: "guideEmail required" });
+
+    // Decode Base64 email
+    guideEmail = Buffer.from(guideEmail, "base64").toString("utf-8");
+
+    const bookings = await Booking.find({ guideEmail }).sort({ date: 1 });
+    res.json({ bookings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
+// ------------------ Confirm / Reject Booking ------------------
+app.patch("/bookings/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!["Confirmed", "Rejected", "Completed"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const booking = await Booking.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    res.json({ message: "Booking updated", booking });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update booking" });
+  }
+});
+
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
