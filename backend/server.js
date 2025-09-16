@@ -1792,8 +1792,12 @@ app.post("/book-guide", async (req, res) => {
 });
 
 app.get("/get-user-bookings", async (req, res) => {
+  const { user } = await getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+  }
   try {
-    const bookings = await Booking.find({ userEmail: req.user.email }).sort({ createdAt: -1 });
+    const bookings = await Booking.find({ userEmail: user.email }).sort({ createdAt: -1 });
     res.json({ bookings });
   } catch (err) {
     console.error(err);
