@@ -6,7 +6,7 @@ const bookingSchema = new mongoose.Schema(
         guideEmail: {
             type: String,
             required: true,
-            index: true, // helps to fetch bookings for a guide
+            index: true,
         },
         userEmail: {
             type: String,

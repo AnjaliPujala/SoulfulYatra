@@ -1681,13 +1681,46 @@ app.delete("/availability", async (req, res) => {
 const Guide = require("./models/Guide");
 app.get("/guides", async (req, res) => {
   try {
-    const guides = await Guide.find(); // fetch all guides
+    const guides = await Guide.aggregate([
+      {
+        $lookup: {
+          from: "users",
+          localField: "email",
+          foreignField: "email",
+          as: "userInfo"
+        }
+      },
+      { $unwind: "$userInfo" },
+      {
+        $lookup: {
+          from: "availabilities",  // collection name (Availability model)
+          localField: "email",
+          foreignField: "guideEmail",
+          as: "availability"
+        }
+      },
+      {
+        $project: {
+          email: 1,
+          places: 1,
+          rating: 1,
+          description: 1,
+          baseFare: 1,
+          name: "$userInfo.name",
+          availableDates: {
+            $ifNull: [{ $arrayElemAt: ["$availability.availableDates", 0] }, []]
+          }
+        }
+      }
+    ]);
+
     res.status(200).json({ success: true, guides });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
 
 // ------------------ Get Guides by Place ------------------
 app.get("/guides/place/:place", async (req, res) => {
@@ -1701,6 +1734,56 @@ app.get("/guides/place/:place", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
+//---------------------BOOKINGS-------------
+const Booking = require("./models/Bookings");
+app.post("/book-guide", async (req, res) => {
+  const { guideEmail, guideName, userEmail, userName, date, totalCost } = req.body;
+
+  // Basic validation
+  if (!guideEmail || !guideName || !userEmail || !userName || !date || !totalCost) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    // Check if date is in guide's availability
+    const availability = await Availability.findOne({ guideEmail });
+
+    if (!availability || !availability.availableDates.includes(new Date(date).toISOString())) {
+      return res.status(400).json({
+        error: `❌ Guide is not available on ${new Date(date).toLocaleDateString()}`
+      });
+    }
+
+    // Create booking
+    const booking = new Booking({
+      guideEmail,
+      userEmail,
+      userName,
+      date: new Date(date),
+      price: totalCost,
+      notes: "",
+      status: "Pending",
+    });
+
+    await booking.save();
+
+    // Remove booked date from availability
+    availability.availableDates = availability.availableDates.filter(
+      d => new Date(d).toISOString() !== new Date(date).toISOString()
+    );
+    await availability.save();
+
+    return res.status(201).json({
+      message: "✅ Booking created successfully",
+      booking,
+    });
+  } catch (err) {
+    console.error("Booking creation error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
