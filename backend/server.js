@@ -1871,7 +1871,7 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(400).json({ success: false, error: "Payment verification failed" });
     }
 
-    // Step 2: Payment verified ✅, create booking in DB
+    // Step 2: Payment verified ✅
     const advanceAmount = Math.ceil(totalCost / 2);
 
     const booking = new Booking({
@@ -1894,12 +1894,46 @@ app.post("/verify-payment", async (req, res) => {
 
     await booking.save();
 
-    return res.json({ success: true, booking });
+    // Step 3: Update guide availability
+    const availability = await Availability.findOne({ guideEmail });
+    if (!availability) {
+      return res.status(400).json({ success: false, error: "❌ Guide availability not found" });
+    }
+
+    // Normalize to date-only (yyyy-mm-dd)
+    const selectedDate = new Date(date).toISOString().split("T")[0];
+
+    const match = availability.availableDates.some(
+      (d) => new Date(d).toISOString().split("T")[0] === selectedDate
+    );
+
+    if (!match) {
+      return res.status(400).json({
+        success: false,
+        error: `❌ Guide is not available on ${new Date(date).toLocaleDateString()}`,
+      });
+    }
+
+    // Remove the booked date
+    availability.availableDates = availability.availableDates.filter(
+      (d) => new Date(d).toISOString().split("T")[0] !== selectedDate
+    );
+
+    await availability.save();
+
+    // Step 4: Success response
+    return res.status(201).json({
+      success: true,
+      message: "✅ Booking created and availability updated successfully",
+      booking,
+    });
+
   } catch (err) {
     console.error("Payment verification error:", err);
     return res.status(500).json({ success: false, error: "Server error" });
   }
 });
+
 
 
 
