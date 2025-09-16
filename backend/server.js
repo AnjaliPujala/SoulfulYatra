@@ -1791,7 +1791,7 @@ app.post("/book-guide", async (req, res) => {
   }
 });
 
-app.get("/get-user-bookings", authMiddleware, async (req, res) => {
+app.get("/get-user-bookings", async (req, res) => {
   try {
     const bookings = await Booking.find({ userEmail: req.user.email }).sort({ createdAt: -1 });
     res.json({ bookings });
