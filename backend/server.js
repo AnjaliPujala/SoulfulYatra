@@ -1805,6 +1805,84 @@ app.get("/get-user-bookings", async (req, res) => {
   }
 });
 
+//-----------------------BOOKING RAZOR--------------------
+// backend/razorpay.js or in your booking route
+const Razorpay = require("razorpay");
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZOR_PAY_KEY_ID,
+  key_secret: process.env.RAZOR_PAY_KEY_SECRET,
+});
+// =====================
+// Create Razorpay Order
+// =====================
+app.post("/create-razorpay-order", async (req, res) => {
+  const { amount } = req.body; // amount in paise
+  try {
+    const options = {
+      amount: amount, // ₹500 → 50000
+      currency: "INR",
+      payment_capture: 1, // automatic capture
+    };
+    const order = await razorpay.orders.create(options);
+    res.json(order);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+// =====================
+// Verify Payment
+// =====================
+const crypto = require("crypto");// adjust path if needed
+
+app.post("/verify-payment", async (req, res) => {
+  const { payment_id, order_id, signature, bookingId } = req.body;
+
+  if (!payment_id || !order_id || !signature || !bookingId) {
+    return res.status(400).json({ success: false, error: "Missing fields" });
+  }
+
+  try {
+    const body = order_id + "|" + payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZOR_PAY_KEY_SECRET)
+      .update(body.toString())
+      .digest("hex");
+
+    if (expectedSignature !== signature) {
+      return res.status(400).json({ success: false, error: "Payment verification failed" });
+    }
+
+    // Payment verified ✅
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, error: "Booking not found" });
+    }
+
+    // Update booking: mark 50% paid and store remaining balance
+    const advanceAmount = Math.ceil(booking.price / 2);
+    booking.paidAmount = advanceAmount;
+    booking.balanceAmount = booking.price - advanceAmount;
+    booking.status = "Confirmed"; // mark as confirmed after advance payment
+    booking.paymentDetails = {
+      paymentId: payment_id,
+      orderId: order_id,
+      signature,
+      paidAt: new Date(),
+    };
+
+    await booking.save();
+
+    return res.json({ success: true, booking });
+  } catch (err) {
+    console.error("Payment verification error:", err);
+    return res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
+
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {

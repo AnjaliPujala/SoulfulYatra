@@ -37,6 +37,7 @@
     "node-cron": "^4.2.1",
     "node-fetch": "^2.7.0",
     "openai": "^4.85.1",
+    "razorpay": "^2.9.6",
     "redis": "^5.8.2",
     "web-push": "^3.6.7"
   },
