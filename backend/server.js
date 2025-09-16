@@ -1740,16 +1740,24 @@ app.get("/guides/place/:place", async (req, res) => {
 app.post("/book-guide", async (req, res) => {
   const { guideEmail, guideName, userEmail, userName, date, totalCost } = req.body;
 
-  // Basic validation
   if (!guideEmail || !guideName || !userEmail || !userName || !date || !totalCost) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    // Check if date is in guide's availability
     const availability = await Availability.findOne({ guideEmail });
+    if (!availability) {
+      return res.status(400).json({ error: "❌ Guide availability not found" });
+    }
 
-    if (!availability || !availability.availableDates.includes(new Date(date).toISOString())) {
+    // Normalize to date-only (yyyy-mm-dd)
+    const selectedDate = new Date(date).toISOString().split("T")[0];
+
+    const match = availability.availableDates.some(d =>
+      new Date(d).toISOString().split("T")[0] === selectedDate
+    );
+
+    if (!match) {
       return res.status(400).json({
         error: `❌ Guide is not available on ${new Date(date).toLocaleDateString()}`
       });
@@ -1765,12 +1773,11 @@ app.post("/book-guide", async (req, res) => {
       notes: "",
       status: "Pending",
     });
-
     await booking.save();
 
-    // Remove booked date from availability
-    availability.availableDates = availability.availableDates.filter(
-      d => new Date(d).toISOString() !== new Date(date).toISOString()
+    // Remove booked date
+    availability.availableDates = availability.availableDates.filter(d =>
+      new Date(d).toISOString().split("T")[0] !== selectedDate
     );
     await availability.save();
 
@@ -1783,6 +1790,7 @@ app.post("/book-guide", async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
