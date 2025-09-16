@@ -1736,7 +1736,6 @@ app.get("/guides/place/:place", async (req, res) => {
 });
 
 //---------------------BOOKINGS-------------
-const Booking = require("./models/Bookings");
 app.post("/book-guide", async (req, res) => {
   const { guideEmail, guideName, userEmail, userName, date, totalCost } = req.body;
 
