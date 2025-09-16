@@ -1,4 +1,3 @@
-// models/Bookings.js
 const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema(
@@ -7,6 +6,10 @@ const bookingSchema = new mongoose.Schema(
             type: String,
             required: true,
             index: true,
+        },
+        guideName: {
+            type: String,
+            required: true,
         },
         userEmail: {
             type: String,
@@ -21,64 +24,7 @@ const bookingSchema = new mongoose.Schema(
             required: true,
         },
         status: {
-            type: String, const mongoose = require('mongoose');
-
-            const bookingSchema = new mongoose.Schema(
-                {
-                    guideEmail: {
-                        type: String,
-                        required: true,
-                        index: true,
-                    },
-                    guideName: {
-                        type: String,
-                        required: true,
-                    },
-                    userEmail: {
-                        type: String,
-                        required: true,
-                    },
-                    userName: {
-                        type: String,
-                        required: true,
-                    },
-                    date: {
-                        type: Date,
-                        required: true,
-                    },
-                    status: {
-                        type: String,
-                        enum: ["Pending", "Confirmed", "Rejected", "Completed"],
-                        default: "Pending",
-                    },
-                    notes: {
-                        type: String,
-                        default: "",
-                    },
-                    price: {
-                        type: Number,
-                        default: 0,
-                    },
-                    paidAmount: {
-                        type: Number,
-                        default: 0,
-                    },
-                    balanceAmount: {
-                        type: Number,
-                        default: 0,
-                    },
-                    paymentDetails: {
-                        paymentId: String,
-                        orderId: String,
-                        signature: String,
-                        paidAt: Date,
-                    },
-                },
-                { timestamps: true }
-            );
-
-            module.exports = mongoose.model("Booking", bookingSchema);
-
+            type: String,
             enum: ["Pending", "Confirmed", "Rejected", "Completed"],
             default: "Pending",
         },
@@ -90,9 +36,22 @@ const bookingSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        paidAmount: {
+            type: Number,
+            default: 0,
+        },
+        balanceAmount: {
+            type: Number,
+            default: 0,
+        },
+        paymentDetails: {
+            paymentId: String,
+            orderId: String,
+            signature: String,
+            paidAt: Date,
+        },
     },
     { timestamps: true }
 );
 
-// Use CommonJS export
 module.exports = mongoose.model("Booking", bookingSchema);
