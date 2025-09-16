@@ -1818,33 +1818,49 @@ const razorpay = new Razorpay({
 // =====================
 app.post("/create-razorpay-order", async (req, res) => {
   const { amount } = req.body; // amount in paise
+  if (!amount) {
+    return res.status(400).json({ error: "Amount is required" });
+  }
+
   try {
     const options = {
-      amount: amount, // ₹500 → 50000
+      amount, // ₹500 → 50000
       currency: "INR",
       payment_capture: 1, // automatic capture
     };
     const order = await razorpay.orders.create(options);
     res.json(order);
   } catch (err) {
-    console.error(err);
+    console.error("Razorpay order creation failed:", err);
     res.status(500).json({ error: "Failed to create order" });
   }
 });
 
-// =====================
-// Verify Payment
-// =====================
-const crypto = require("crypto");// adjust path if needed
 
+const crypto = require("crypto"); // adjust path if needed
+
+// =====================
+// Verify Payment & Create Booking
+// =====================
 app.post("/verify-payment", async (req, res) => {
-  const { payment_id, order_id, signature, bookingId } = req.body;
+  const {
+    payment_id,
+    order_id,
+    signature,
+    guideEmail,
+    guideName,
+    userEmail,
+    userName,
+    date,
+    totalCost,
+  } = req.body;
 
-  if (!payment_id || !order_id || !signature || !bookingId) {
-    return res.status(400).json({ success: false, error: "Missing fields" });
+  if (!payment_id || !order_id || !signature || !guideEmail || !userEmail || !date) {
+    return res.status(400).json({ success: false, error: "Missing required fields" });
   }
 
   try {
+    // Step 1: Verify Razorpay signature
     const body = order_id + "|" + payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZOR_PAY_KEY_SECRET)
@@ -1855,23 +1871,26 @@ app.post("/verify-payment", async (req, res) => {
       return res.status(400).json({ success: false, error: "Payment verification failed" });
     }
 
-    // Payment verified ✅
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      return res.status(404).json({ success: false, error: "Booking not found" });
-    }
+    // Step 2: Payment verified ✅, create booking in DB
+    const advanceAmount = Math.ceil(totalCost / 2);
 
-    // Update booking: mark 50% paid and store remaining balance
-    const advanceAmount = Math.ceil(booking.price / 2);
-    booking.paidAmount = advanceAmount;
-    booking.balanceAmount = booking.price - advanceAmount;
-    booking.status = "Confirmed"; // mark as confirmed after advance payment
-    booking.paymentDetails = {
-      paymentId: payment_id,
-      orderId: order_id,
-      signature,
-      paidAt: new Date(),
-    };
+    const booking = new Booking({
+      guideEmail,
+      guideName,
+      userEmail,
+      userName,
+      date,
+      price: totalCost,
+      paidAmount: advanceAmount,
+      balanceAmount: totalCost - advanceAmount,
+      status: "Confirmed",
+      paymentDetails: {
+        paymentId: payment_id,
+        orderId: order_id,
+        signature,
+        paidAt: new Date(),
+      },
+    });
 
     await booking.save();
 
@@ -1881,6 +1900,7 @@ app.post("/verify-payment", async (req, res) => {
     return res.status(500).json({ success: false, error: "Server error" });
   }
 });
+
 
 
 
