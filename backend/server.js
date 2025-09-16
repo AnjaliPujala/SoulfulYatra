@@ -1791,6 +1791,16 @@ app.post("/book-guide", async (req, res) => {
   }
 });
 
+app.get("/get-user-bookings", authMiddleware, async (req, res) => {
+  try {
+    const bookings = await Booking.find({ userEmail: req.user.email }).sort({ createdAt: -1 });
+    res.json({ bookings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
