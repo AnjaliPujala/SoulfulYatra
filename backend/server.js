@@ -1693,7 +1693,7 @@ app.get("/guides", async (req, res) => {
       { $unwind: "$userInfo" },
       {
         $lookup: {
-          from: "availabilities",  // collection name (Availability model)
+          from: "availabilities", // collection name
           localField: "email",
           foreignField: "guideEmail",
           as: "availability"
@@ -1708,7 +1708,7 @@ app.get("/guides", async (req, res) => {
           baseFare: 1,
           name: "$userInfo.name",
           availableDates: {
-            $ifNull: [{ $arrayElemAt: ["$availability.availableDates", 0] }, []]
+            $ifNull: [{ $first: "$availability.availableDates" }, []]
           }
         }
       }
@@ -1720,6 +1720,7 @@ app.get("/guides", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
 
 
 // ------------------ Get Guides by Place ------------------
