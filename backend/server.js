@@ -1938,6 +1938,119 @@ app.post("/verify-payment", async (req, res) => {
 
 
 
+// ✅ Change Booking Date
+app.put("/change-booking-date/:id", async (req, res) => {
+  const { newDate } = req.body;
+  if (!newDate) {
+    return res.status(400).json({ error: "New date is required" });
+  }
+
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    if (booking.status === "Cancelled") {
+      return res.status(400).json({ error: "Cannot change date of a cancelled booking" });
+    }
+
+    const availability = await Availability.findOne({ guideEmail: booking.guideEmail });
+    if (!availability) {
+      return res.status(400).json({ error: "Guide availability not found" });
+    }
+
+    const selectedDate = new Date(newDate).toISOString().split("T")[0];
+
+    // Check if new date is available
+    const isAvailable = availability.availableDates.some(
+      d => new Date(d).toISOString().split("T")[0] === selectedDate
+    );
+    if (!isAvailable) {
+      return res.status(400).json({ error: "Guide not available on this date" });
+    }
+
+    // Restore old date
+    const oldDate = new Date(booking.date).toISOString().split("T")[0];
+    if (!availability.availableDates.some(d => new Date(d).toISOString().split("T")[0] === oldDate)) {
+      availability.availableDates.push(booking.date);
+    }
+
+    // Remove new date from availability
+    availability.availableDates = availability.availableDates.filter(
+      d => new Date(d).toISOString().split("T")[0] !== selectedDate
+    );
+
+    // Save booking + availability
+    booking.date = newDate;
+    await booking.save();
+    await availability.save();
+
+    return res.json({ message: "Booking date updated successfully", booking });
+  } catch (err) {
+    console.error("Change booking date error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Cancel booking
+app.put("/cancel-booking/:id", async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    const tripDate = new Date(booking.date);
+    const now = new Date();
+    const diffHours = (tripDate - now) / (1000 * 60 * 60);
+
+    let refundAmount = 0;
+    const advancePaid = booking.paidAmount * 100; // convert to paise
+
+    if (diffHours >= 24 * 7) {
+      refundAmount = advancePaid; // Full refund
+    } else if (diffHours >= 48) {
+      refundAmount = advancePaid / 2; // 50% refund
+    } else {
+      refundAmount = 0; // No refund
+    }
+
+    // Process refund if applicable
+    let refundResult = null;
+    if (refundAmount > 0) {
+      refundResult = await razorpay.payments.refund(booking.paymentDetails.paymentId, {
+        amount: refundAmount,
+      });
+    }
+
+    // Update booking status
+    booking.status = "Cancelled";
+    booking.refund = {
+      amount: refundAmount / 100,
+      refunded: refundAmount > 0,
+      refundId: refundResult?.id || null,
+      refundDate: refundResult ? new Date() : null,
+    };
+    await booking.save();
+
+    // Restore guide availability
+    const availability = await Availability.findOne({ guideEmail: booking.guideEmail });
+    if (availability) {
+      availability.availableDates.push(booking.date);
+      await availability.save();
+    }
+
+    res.json({
+      message: "Booking cancelled successfully",
+      refundAmount: refundAmount / 100,
+      booking,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
