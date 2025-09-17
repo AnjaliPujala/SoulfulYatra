@@ -2004,31 +2004,40 @@ app.put("/cancel-booking/:id", async (req, res) => {
     const diffHours = (tripDate - now) / (1000 * 60 * 60);
 
     let refundAmount = 0;
-    const advancePaid = booking.paidAmount * 100; // convert to paise
+    const advancePaid = booking.paidAmount * 100; // paise
 
     if (diffHours >= 24 * 7) {
       refundAmount = advancePaid; // Full refund
     } else if (diffHours >= 48) {
       refundAmount = advancePaid / 2; // 50% refund
-    } else {
-      refundAmount = 0; // No refund
     }
 
-    // Process refund if applicable
     let refundResult = null;
-    if (refundAmount > 0) {
-      refundResult = await razorpay.payments.refund(booking.paymentDetails.paymentId, {
-        amount: refundAmount,
-      });
+
+    try {
+      if (refundAmount > 0) {
+        refundResult = await razorpay.payments.refund(booking.paymentDetails.paymentId, {
+          amount: refundAmount,
+        });
+      }
+    } catch (err) {
+      if (
+        err.error?.description === "The payment has been fully refunded already"
+      ) {
+        // Payment already refunded, ignore Razorpay error
+        refundResult = { id: "already_refunded" };
+      } else {
+        throw err; // Other errors
+      }
     }
 
-    // Update booking status
+    // Update booking status and refund info in DB
     booking.status = "Cancelled";
     booking.refund = {
       amount: refundAmount / 100,
       refunded: refundAmount > 0,
       refundId: refundResult?.id || null,
-      refundDate: refundResult ? new Date() : null,
+      refundDate: new Date(),
     };
     await booking.save();
 
@@ -2049,6 +2058,7 @@ app.put("/cancel-booking/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 // ------------------- SERVER START -------------------
