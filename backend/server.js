@@ -2059,6 +2059,16 @@ app.put("/cancel-booking/:id", async (req, res) => {
   }
 });
 
+app.delete("/delete-booking/:id", async (req, res) => {
+  try {
+    const booking = await Booking.findByIdAndDelete(req.params.id);
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+    res.json({ message: "Booking deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 
 // ------------------- SERVER START -------------------
