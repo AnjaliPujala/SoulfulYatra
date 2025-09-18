@@ -8,8 +8,8 @@ const guideRegistrationSchema = new mongoose.Schema({
     places: { type: [String], required: true },
     description: { type: String },
     baseFare: { type: Number, required: true, default: 1000 },
-    govtCertificateUrl: { type: String }, // optional
-    aadhaarCardUrl: { type: String, required: true },
+    govtCertificatePublicId: { type: String }, // optional
+    aadhaarCardPublicId: { type: String, required: true }, // required
     isApproved: { type: Boolean, default: false }, // admin decision
 }, { timestamps: true });
 
