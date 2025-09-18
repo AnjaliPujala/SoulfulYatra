@@ -440,21 +440,18 @@ async function reverseGeocode(lat, lon) {
 
 app.post("/suggest-places", async (req, res) => {
   try {
-    const { lat, lon, interests } = req.body;
+    const { place, interests, limit = 20 } = req.body;
 
-    if (!lat || !lon) {
-      return res.status(400).json({ error: "Latitude and longitude are required" });
+    if (!place || !interests) {
+      return res.status(400).json({ error: "Place and interests are required" });
     }
 
-    // 🔄 Get city/state from reverse geocoding
-    const { city, state } = await reverseGeocode(lat, lon);
-
     const prompt = `
-You are a travel assistant. Suggest 10 vacation destinations within 50 km radius
-from these coordinates: (${lat}, ${lon}) near "${city}, ${state}", matching this user's interests: "${interests || "general"}".
+You are a travel assistant. Suggest ${limit} vacation destinations related to "${place}" 
+matching these interests: "${interests}". 
 For each, give a 80-100 word description.
 
-Return a JSON array of objects strictly in this format:
+Return strictly a JSON array in this format:
 [
   { "destination": "Place Name", "description": "About the place, best time to visit" }
 ]
@@ -474,24 +471,12 @@ Do NOT return anything else.
     const parsed = tryParseJSON(raw);
 
     if (!Array.isArray(parsed) || parsed.length === 0) {
-      return res
-        .status(500)
-        .json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
+      return res.status(500).json({ error: "Invalid AI response", raw: raw?.slice?.(0, 1000) });
     }
 
-    const suggestions = parsed
-      .map((item) => ({
-        destination: item.destination || "Unknown Place",
-        description: item.description || "",
-      }))
-      .slice(0, 5);
-
-    res.json({ city, state, suggestions });
+    res.json({ suggestions: parsed });
   } catch (err) {
-    //console.error("Error /suggest-places:", err);
-    return res
-      .status(500)
-      .json({ error: "Server error", details: String(err.message || err) });
+    return res.status(500).json({ error: "Server error", details: String(err.message || err) });
   }
 });
 
@@ -2088,57 +2073,94 @@ app.put('/complete-booking/:id', async (req, res) => {
 });
 
 //------Guide register----------
-const GuideRegistration = require('./models/GuideRegistration');
 const guideStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'guides',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
-    public_id: (req, file) => `guide-${Date.now()}-${path.parse(file.originalname).name}`
-  }
+  params: async (req, file) => {
+    const hash = crypto.randomBytes(16).toString("hex"); // ❌ unpredictable ID
+    return {
+      folder: "guides",
+      allowed_formats: ["jpg", "jpeg", "png", "pdf"],
+      public_id: `guide-${hash}`,
+      resource_type: "auto",
+      type: file.fieldname === "aadhaarCard" ? "private" : "authenticated",
+      // Aadhaar is private, others can be authenticated
+    };
+  },
 });
 
 const guideUpload = multer({ storage: guideStorage });
+const GuideRegistration = require("./models/GuideRegistration");
+// ---------------- POST /register-guide ----------------
+app.post(
+  "/register-guide",
+  guideUpload.fields([
+    { name: "govtCertificate", maxCount: 1 },
+    { name: "aadhaarCard", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { name, email, phone, password, places, description, baseFare } = req.body;
 
-app.post("/register-guide", guideUpload.fields([
-  { name: "govtCertificate", maxCount: 1 },
-  { name: "aadhaarCard", maxCount: 1 }
-]), async (req, res) => {
+      if (!name || !email || !phone || !password || !places) {
+        return res.status(400).json({ error: "All required fields must be filled" });
+      }
+
+      const existing = await GuideRegistration.findOne({ email });
+      if (existing) return res.status(400).json({ error: "Registration already submitted" });
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Store Cloudinary public_id instead of URL for private files
+      const guideReg = new GuideRegistration({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        places: places.split(","),
+        description,
+        baseFare,
+        govtCertificatePublicId: req.files["govtCertificate"]
+          ? req.files["govtCertificate"][0].filename
+          : null,
+        aadhaarCardPublicId: req.files["aadhaarCard"][0].filename,
+      });
+
+      await guideReg.save();
+
+      res.status(201).json({
+        message: "Guide registration submitted, pending admin approval",
+        guideReg,
+      });
+    } catch (err) {
+      console.error("Guide Registration Error:", err);
+      res.status(500).json({ error: "Failed to submit guide registration" });
+    }
+  }
+);
+
+
+// Admin route to get signed URL for a guide's Aadhaar
+app.get("/admin/guide/:id/aadhaar", async (req, res) => {
   try {
-    const { name, email, phone, password, places, description, baseFare } = req.body;
+    const guideId = req.params.id;
 
-    if (!name || !email || !phone || !password || !places) {
-      return res.status(400).json({ error: "All required fields must be filled" });
+    // Fetch guide from DB
+    const guide = await GuideRegistration.findById(guideId);
+    if (!guide || !guide.aadhaarCardPublicId) {
+      return res.status(404).json({ error: "Aadhaar not found" });
     }
 
-    const existing = await GuideRegistration.findOne({ email });
-    if (existing) return res.status(400).json({ error: "Registration already submitted" });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const guideReg = new GuideRegistration({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      places: places.split(","),
-      description,
-      baseFare,
-      govtCertificateUrl: req.files["govtCertificate"]
-        ? req.files["govtCertificate"][0].path
-        : null,
-      aadhaarCardUrl: req.files["aadhaarCard"][0].path
+    // Generate signed URL (valid for 10 min)
+    const signedUrl = cloudinary.url(guide.aadhaarCardPublicId, {
+      type: "private",
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 600, // 10 minutes
     });
 
-    await guideReg.save();
-
-    res.status(201).json({
-      message: "Guide registration submitted, pending admin approval",
-      guideReg
-    });
+    res.json({ signedUrl });
   } catch (err) {
-    console.error("Guide Registration Error:", err);
-    res.status(500).json({ error: "Failed to submit guide registration" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate signed URL" });
   }
 });
 
