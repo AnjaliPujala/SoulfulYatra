@@ -22,8 +22,20 @@ const Guide = new mongoose.Schema({
     baseFare: {
         type: Number,
         required: true,
-        default: 1000 // in INR, or whatever currency
-    }, // Base fare per day/trip
+        default: 1000 // in INR
+    },
+    govtCertificateUrl: {
+        type: String,
+        required: false
+    },
+    aadhaarCardUrl: {
+        type: String,
+        required: true
+    },
+    isApproved: {
+        type: Boolean,
+        default: false
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Guide", Guide);

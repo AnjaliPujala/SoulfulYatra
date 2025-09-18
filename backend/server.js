@@ -181,6 +181,8 @@ app.post('/register', async (req, res) => {
   }
 });
 
+
+
 // Login
 app.post('/valid-login', async (req, res) => {
   const { email, password } = req.body;
@@ -2069,7 +2071,65 @@ app.delete("/delete-booking/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+app.put('/complete-booking/:id', async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
+    // Update status to Completed
+    booking.status = "Completed";
+    await booking.save();
+
+    res.json({ message: 'Booking marked as completed', booking });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+//------Guide register----------
+const GuideRegistration = require('./models/GuideRegistration');
+app.post("/register-guide", upload.fields([
+  { name: "govtCertificate", maxCount: 1 },
+  { name: "aadhaarCard", maxCount: 1 }
+]), async (req, res) => {
+  try {
+    const { name, email, phone, password, places, description, baseFare } = req.body;
+
+    if (!name || !email || !phone || !password || !places) {
+      return res.status(400).json({ error: "All required fields must be filled" });
+    }
+
+    const existing = await GuideRegistration.findOne({ email });
+    if (existing) return res.status(400).json({ error: "Registration already submitted" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const guideReg = new GuideRegistration({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      places: places.split(","),
+      description,
+      baseFare,
+      govtCertificateUrl: req.files["govtCertificate"]
+        ? req.files["govtCertificate"][0].path
+        : null,
+      aadhaarCardUrl: req.files["aadhaarCard"][0].path
+    });
+
+    await guideReg.save();
+
+    res.status(201).json({
+      message: "Guide registration submitted, pending admin approval",
+      guideReg
+    });
+  } catch (err) {
+    console.error("Guide Registration Error:", err);
+    res.status(500).json({ error: "Failed to submit guide registration" });
+  }
+});
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
