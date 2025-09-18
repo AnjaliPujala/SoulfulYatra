@@ -2089,7 +2089,18 @@ app.put('/complete-booking/:id', async (req, res) => {
 
 //------Guide register----------
 const GuideRegistration = require('./models/GuideRegistration');
-app.post("/register-guide", upload.fields([
+const guideStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'guides',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+    public_id: (req, file) => `guide-${Date.now()}-${path.parse(file.originalname).name}`
+  }
+});
+
+const guideUpload = multer({ storage: guideStorage });
+
+app.post("/register-guide", guideUpload.fields([
   { name: "govtCertificate", maxCount: 1 },
   { name: "aadhaarCard", maxCount: 1 }
 ]), async (req, res) => {
