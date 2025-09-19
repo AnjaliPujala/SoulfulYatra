@@ -2099,9 +2099,9 @@ app.post(
   ]),
   async (req, res) => {
     try {
-      const { name, email, phone, password, places, description, baseFare } = req.body;
+      const { name, email, phone, password, places, description, languages, reviewLinks, baseFare, fareType } = req.body;
 
-      if (!name || !email || !phone || !password || !places) {
+      if (!name || !email || !phone || !password || !places || !fareType) {
         return res.status(400).json({ error: "All required fields must be filled" });
       }
 
@@ -2110,33 +2110,31 @@ app.post(
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Store Cloudinary public_id instead of URL for private files
       const guideReg = new GuideRegistration({
         name,
         email,
         phone,
         password: hashedPassword,
-        places: places.split(","),
+        places: places.split(",").map((p) => p.trim()),
         description,
+        languages: languages ? languages.split(",").map((l) => l.trim()) : [],
+        reviewLinks: reviewLinks ? reviewLinks.split(",").map((r) => r.trim()) : [],
         baseFare,
-        govtCertificatePublicId: req.files["govtCertificate"]
-          ? req.files["govtCertificate"][0].filename
-          : null,
+        fareType,
+        govtCertificatePublicId: req.files["govtCertificate"] ? req.files["govtCertificate"][0].filename : null,
         aadhaarCardPublicId: req.files["aadhaarCard"][0].filename,
       });
 
       await guideReg.save();
 
-      res.status(201).json({
-        message: "Guide registration submitted, pending admin approval",
-        guideReg,
-      });
+      res.status(201).json({ message: "Guide registration submitted, pending admin approval", guideReg });
     } catch (err) {
       console.error("Guide Registration Error:", err);
       res.status(500).json({ error: "Failed to submit guide registration" });
     }
   }
 );
+
 
 
 // Admin route to get signed URL for a guide's Aadhaar

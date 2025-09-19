@@ -4,13 +4,16 @@ const guideRegistrationSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     phone: { type: String, required: true },
-    password: { type: String, required: true }, // store hashed password
+    password: { type: String, required: true }, // hashed
     places: { type: [String], required: true },
     description: { type: String },
+    languages: { type: [String], default: [] }, // ✅
+    reviewLinks: { type: [String], default: [] }, // ✅
     baseFare: { type: Number, required: true, default: 1000 },
-    govtCertificatePublicId: { type: String }, // optional
-    aadhaarCardPublicId: { type: String, required: true }, // required
-    isApproved: { type: Boolean, default: false }, // admin decision
+    fareType: { type: String, enum: ["per_day", "half_day", "per_person"], default: "per_day" }, // ✅
+    govtCertificatePublicId: { type: String },
+    aadhaarCardPublicId: { type: String, required: true },
+    isApproved: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model("GuideRegistration", guideRegistrationSchema);
