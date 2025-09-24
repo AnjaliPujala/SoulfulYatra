@@ -2134,6 +2134,58 @@ app.post(
   }
 );
 
+// ✅ Get all guides
+app.get("/guides", async (req, res) => {
+  try {
+    // Fetch only guides that are not approved
+    const guides = await GuideRegistration.find({ isApproved: false }).sort({ createdAt: -1 });
+    res.json(guides);
+  } catch (err) {
+    console.error("Error fetching guides:", err);
+    res.status(500).json({ error: "Failed to fetch guides" });
+  }
+});
+
+
+// ✅ Approve/Reject guide
+app.patch("/guides/:id/approve", async (req, res) => {
+  try {
+    const { isApproved } = req.body;
+
+    // Update guide approval status
+    const updatedGuide = await GuideRegistration.findByIdAndUpdate(
+      req.params.id,
+      { isApproved },
+      { new: true }
+    );
+
+    if (!updatedGuide) {
+      return res.status(404).json({ error: "Guide not found" });
+    }
+
+    // If guide is approved, add to User collection
+    if (isApproved) {
+      // Check if user already exists
+      const existingUser = await User.findOne({ email: updatedGuide.email });
+      if (!existingUser) {
+        const newUser = new User({
+          name: updatedGuide.name,
+          email: updatedGuide.email,
+          phone: updatedGuide.phone,
+          password: updatedGuide.password, // already hashed
+          role: "guide",
+          isActive: true,
+        });
+        await newUser.save();
+      }
+    }
+
+    res.json(updatedGuide);
+  } catch (err) {
+    console.error("Error updating guide:", err);
+    res.status(500).json({ error: "Failed to update guide" });
+  }
+});
 
 
 // Admin route to get signed URL for a guide's Aadhaar
