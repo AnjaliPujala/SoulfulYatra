@@ -2158,11 +2158,11 @@ app.get("/guides/:id/certificate", async (req, res) => {
 
     const signedUrl = cloudinary.url(guide.govtCertificatePublicId, {
       resource_type: "auto",
-      type: "authenticated",
+      type: "upload",
       sign_url: true,
       secure: true,
     });
-
+    console.log(signedUrl);
     // Redirect to the signed URL
     res.redirect(signedUrl);
   } catch (err) {
