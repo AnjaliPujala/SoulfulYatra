@@ -2082,7 +2082,7 @@ const guideStorage = new CloudinaryStorage({
       allowed_formats: ["jpg", "jpeg", "png", "pdf"],
       public_id: `guide-${hash}`,
       resource_type: "auto",
-      type: "private",
+      type: "authenticated",
       // Aadhaar is private, others can be authenticated
     };
   },
@@ -2243,7 +2243,7 @@ app.delete("/guides/:id/reject", async (req, res) => {
 });
 
 // Admin route to get signed URL for a guide's Aadhaar
-app.get("/admin/guide/:id/gov-certificate", async (req, res) => {
+/*app.get("/admin/guide/:id/adhaar", async (req, res) => {
   try {
     const guideId = req.params.id;
 
@@ -2265,7 +2265,7 @@ app.get("/admin/guide/:id/gov-certificate", async (req, res) => {
     console.error(err);
     res.status(500).json({ error: "Failed to generate signed URL" });
   }
-});
+});*/
 
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
