@@ -2135,16 +2135,26 @@ app.post(
 );
 
 // ✅ Get all guides
+// GET pending guides
 app.get("/guides/pending", async (req, res) => {
   try {
-    // Fetch only guides that are not approved
     const guides = await GuideRegistration.find({ isApproved: false }).sort({ createdAt: -1 });
-    res.json(guides);
+
+    // Add Cloudinary URL for Govt Certificate
+    const guidesWithCertUrl = guides.map((guide) => ({
+      ...guide._doc,
+      govtCertificateUrl: guide.govtCertificatePublicId
+        ? cloudinary.url(guide.govtCertificatePublicId, { resource_type: "auto", secure: true })
+        : null,
+    }));
+
+    res.json(guidesWithCertUrl);
   } catch (err) {
     console.error("Error fetching guides:", err);
     res.status(500).json({ error: "Failed to fetch guides" });
   }
 });
+
 
 
 // ✅ Approve/Reject guide
@@ -2172,7 +2182,7 @@ app.patch("/guides/:id/approve", async (req, res) => {
           name: updatedGuide.name,
           email: updatedGuide.email,
           phone: updatedGuide.phone,
-          password: updatedGuide.password, // already hashed
+          password: updatedGuide.password,
           role: "guide",
           isActive: true,
         });
