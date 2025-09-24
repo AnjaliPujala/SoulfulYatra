@@ -2181,7 +2181,7 @@ app.patch("/guides/:id/approve", async (req, res) => {
   try {
     const { isApproved } = req.body;
 
-    // Update guide approval status
+    // Update guide approval status in GuideRegistration
     const updatedGuide = await GuideRegistration.findByIdAndUpdate(
       req.params.id,
       { isApproved },
@@ -2192,9 +2192,8 @@ app.patch("/guides/:id/approve", async (req, res) => {
       return res.status(404).json({ error: "Guide not found" });
     }
 
-    // If guide is approved, add to User collection
     if (isApproved) {
-      // Check if user already exists
+      // 1. Ensure User exists
       const existingUser = await User.findOne({ email: updatedGuide.email });
       if (!existingUser) {
         const newUser = new User({
@@ -2207,14 +2206,43 @@ app.patch("/guides/:id/approve", async (req, res) => {
         });
         await newUser.save();
       }
+
+      // 2. Ensure Guide exists
+      const existingGuide = await Guide.findOne({ email: updatedGuide.email });
+      if (!existingGuide) {
+        const newGuide = new Guide({
+          email: updatedGuide.email,
+          places: updatedGuide.places,
+          rating: 0, // default
+          description: updatedGuide.description,
+          baseFare: updatedGuide.baseFare,
+          reviewLinks: updatedGuide.reviewLinks && updatedGuide.reviewLinks.length > 0
+            ? updatedGuide.reviewLinks
+            : [], // copy review links if present
+          govtCertificateUrl: updatedGuide.govtCertificatePublicId
+            ? cloudinary.url(updatedGuide.govtCertificatePublicId, {
+              type: "authenticated",
+              sign_url: true,
+              secure: true,
+            })
+            : null,
+          isApproved: true,
+        });
+        await newGuide.save();
+      }
     }
 
-    res.json(updatedGuide);
+    // Format rating for response
+    res.json({
+      ...updatedGuide.toObject(),
+      rating: updatedGuide.rating === 0 ? "No ratings yet" : updatedGuide.rating,
+    });
   } catch (err) {
-    console.error("Error updating guide:", err);
-    res.status(500).json({ error: "Failed to update guide" });
+    console.error("Error approving guide:", err);
+    res.status(500).json({ error: "Failed to approve guide" });
   }
 });
+
 
 // DELETE /guides/:id/reject
 app.delete("/guides/:id/reject", async (req, res) => {
