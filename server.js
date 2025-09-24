@@ -1666,6 +1666,7 @@ app.delete("/availability", async (req, res) => {
 });
 
 const Guide = require("./models/Guide");
+
 app.get("/guides", async (req, res) => {
   try {
     const guides = await Guide.aggregate([
@@ -1693,7 +1694,10 @@ app.get("/guides", async (req, res) => {
           rating: 1,
           description: 1,
           baseFare: 1,
+          fareType: 1,
+          languages: 1,
           name: "$userInfo.name",
+          phone: "$userInfo.phone",
           availableDates: {
             $ifNull: [{ $first: "$availability.availableDates" }, []]
           }
@@ -1707,6 +1711,7 @@ app.get("/guides", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
 
 
 
@@ -2211,6 +2216,7 @@ app.patch("/guides/:id/approve", async (req, res) => {
       const existingGuide = await Guide.findOne({ email: updatedGuide.email });
       if (!existingGuide) {
         const newGuide = new Guide({
+          name: updatedGuide.name,
           email: updatedGuide.email,
           phone: updatedGuide.phone,
           places: updatedGuide.places,
@@ -2249,6 +2255,7 @@ app.patch("/guides/:id/approve", async (req, res) => {
     res.status(500).json({ error: "Failed to approve guide" });
   }
 });
+
 
 
 
