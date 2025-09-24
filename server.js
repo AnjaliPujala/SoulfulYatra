@@ -2212,13 +2212,17 @@ app.patch("/guides/:id/approve", async (req, res) => {
       if (!existingGuide) {
         const newGuide = new Guide({
           email: updatedGuide.email,
+          phone: updatedGuide.phone,
           places: updatedGuide.places,
+          languages: updatedGuide.languages || [],
           rating: 0, // default
           description: updatedGuide.description,
           baseFare: updatedGuide.baseFare,
-          reviewLinks: updatedGuide.reviewLinks && updatedGuide.reviewLinks.length > 0
-            ? updatedGuide.reviewLinks
-            : [], // copy review links if present
+          fareType: updatedGuide.fareType || "per_day",
+          reviewLinks:
+            updatedGuide.reviewLinks && updatedGuide.reviewLinks.length > 0
+              ? updatedGuide.reviewLinks
+              : [],
           govtCertificateUrl: updatedGuide.govtCertificatePublicId
             ? cloudinary.url(updatedGuide.govtCertificatePublicId, {
               type: "authenticated",
@@ -2235,13 +2239,17 @@ app.patch("/guides/:id/approve", async (req, res) => {
     // Format rating for response
     res.json({
       ...updatedGuide.toObject(),
-      rating: updatedGuide.rating === 0 ? "No ratings yet" : updatedGuide.rating,
+      rating:
+        updatedGuide.rating && updatedGuide.rating > 0
+          ? updatedGuide.rating
+          : "No ratings yet",
     });
   } catch (err) {
     console.error("Error approving guide:", err);
     res.status(500).json({ error: "Failed to approve guide" });
   }
 });
+
 
 
 // DELETE /guides/:id/reject
