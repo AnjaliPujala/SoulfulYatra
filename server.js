@@ -2138,13 +2138,19 @@ app.post(
 // GET pending guides
 app.get("/guides/pending", async (req, res) => {
   try {
+    // Fetch only guides that are not approved
     const guides = await GuideRegistration.find({ isApproved: false }).sort({ createdAt: -1 });
 
-    // Add Cloudinary URL for Govt Certificate
+    // Add signed Cloudinary URL for Govt Certificate
     const guidesWithCertUrl = guides.map((guide) => ({
       ...guide._doc,
       govtCertificateUrl: guide.govtCertificatePublicId
-        ? cloudinary.url(guide.govtCertificatePublicId, { resource_type: "auto", secure: true })
+        ? cloudinary.url(guide.govtCertificatePublicId, {
+          resource_type: "auto",
+          type: "authenticated", // your existing type
+          sign_url: true,         // ✅ signed URL
+          secure: true,
+        })
         : null,
     }));
 
