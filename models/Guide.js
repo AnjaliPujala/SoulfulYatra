@@ -28,9 +28,9 @@ const Guide = new mongoose.Schema({
         type: String,
         required: false
     },
-    aadhaarCardUrl: {
-        type: String,
-        required: true
+    reviewLinks: {
+        type: [String],
+        default: []
     },
     isApproved: {
         type: Boolean,
