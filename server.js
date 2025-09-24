@@ -2310,6 +2310,51 @@ app.delete("/guides/:id/reject", async (req, res) => {
   }
 });*/
 
+
+// Update guide info
+app.patch("/update-guide-profile", async (req, res) => {
+  const { email } = req.user; // from auth middleware
+  const { name, phone, baseFare, fareType, languages, description } = req.body;
+  try {
+    const updatedGuide = await Guide.findOneAndUpdate(
+      { email },
+      { name, phone, baseFare, fareType, languages, description },
+      { new: true }
+    );
+    res.json({ success: true, guide: updatedGuide });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to update profile" });
+  }
+});
+app.get("/earnings", async (req, res) => {
+  const { email } = req.user; // guide email from auth
+  try {
+    const completedBookings = await Booking.find({
+      guideEmail: email,
+      status: "Completed",
+    });
+    const totalEarnings = completedBookings.reduce((sum, b) => sum + b.price, 0);
+    res.json({ totalEarnings, completedBookings });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch earnings" });
+  }
+});
+app.get('/guide-details', async (req, res) => {
+  try {
+    const { email } = req.query; // pass guide email as query parameter
+    if (!email) return res.status(400).json({ success: false, error: "Email is required" });
+
+    const guide = await Guide.findOne({ email });
+    if (!guide) return res.status(404).json({ success: false, error: "Guide not found" });
+
+    res.status(200).json({ success: true, guide });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to fetch guide details" });
+  }
+});
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
   const PORT = process.env.PORT || 5000;
