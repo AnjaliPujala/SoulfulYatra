@@ -2135,7 +2135,7 @@ app.post(
 );
 
 // ✅ Get all guides
-// GET pending guides
+
 app.get("/guides/pending", async (req, res) => {
   try {
     // Fetch only guides that are not approved
@@ -2161,6 +2161,25 @@ app.get("/guides/pending", async (req, res) => {
   }
 });
 
+app.get("/guides/:id/certificate", async (req, res) => {
+  try {
+    const guide = await GuideRegistration.findById(req.params.id);
+    if (!guide || !guide.govtCertificatePublicId) return res.status(404).send("Not found");
+
+    const signedUrl = cloudinary.url(guide.govtCertificatePublicId, {
+      resource_type: "auto",
+      type: "authenticated",
+      sign_url: true,
+      secure: true,
+    });
+
+    // Redirect to the signed URL
+    res.redirect(signedUrl);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to fetch certificate");
+  }
+});
 
 
 // ✅ Approve/Reject guide
@@ -2203,6 +2222,31 @@ app.patch("/guides/:id/approve", async (req, res) => {
   }
 });
 
+// DELETE /guides/:id/reject
+app.delete("/guides/:id/reject", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find and remove the guide
+    const deletedGuide = await GuideRegistration.findByIdAndDelete(id);
+
+    if (!deletedGuide) {
+      return res.status(404).json({ error: "Guide not found" });
+    }
+
+    // Optionally: delete the govt certificate from Cloudinary
+    if (deletedGuide.govtCertificatePublicId) {
+      await cloudinary.uploader.destroy(deletedGuide.govtCertificatePublicId, {
+        resource_type: "auto",
+      });
+    }
+
+    res.json({ message: "Guide rejected and removed successfully" });
+  } catch (err) {
+    console.error("Error rejecting guide:", err);
+    res.status(500).json({ error: "Failed to reject guide" });
+  }
+});
 
 // Admin route to get signed URL for a guide's Aadhaar
 app.get("/admin/guide/:id/aadhaar", async (req, res) => {
