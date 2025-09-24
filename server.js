@@ -2135,7 +2135,7 @@ app.post(
 );
 
 // ✅ Get all guides
-app.get("/guides", async (req, res) => {
+app.get("/guides/pending", async (req, res) => {
   try {
     // Fetch only guides that are not approved
     const guides = await GuideRegistration.find({ isApproved: false }).sort({ createdAt: -1 });
