@@ -2082,7 +2082,7 @@ const guideStorage = new CloudinaryStorage({
       allowed_formats: ["jpg", "jpeg", "png", "pdf"],
       public_id: `guide-${hash}`,
       resource_type: "auto",
-      type: file.fieldname === "aadhaarCard" ? "private" : "authenticated",
+      type: "private",
       // Aadhaar is private, others can be authenticated
     };
   },
@@ -2153,21 +2153,25 @@ app.get("/guides/pending", async (req, res) => {
 
 app.get("/guides/:id/certificate", async (req, res) => {
   try {
-    const guide = await GuideRegistration.findById(req.params.id);
-    if (!guide || !guide.govtCertificatePublicId) return res.status(404).send("Not found");
+    const guideId = req.params.id;
 
+    // Fetch guide from DB
+    const guide = await GuideRegistration.findById(guideId);
+    if (!guide || !guide.govtCertificatePublicId) {
+      return res.status(404).json({ error: "Govt Certificate not found" });
+    }
+
+    // Generate signed URL (valid for 10 minutes)
     const signedUrl = cloudinary.url(guide.govtCertificatePublicId, {
-      resource_type: "auto",
-      type: "authenticated",
+      type: "authenticated", // because it’s uploaded as authenticated
       sign_url: true,
-
+      expires_at: Math.floor(Date.now() / 1000) + 600,
     });
-    console.log(signedUrl);
-    // Redirect to the signed URL
-    res.redirect(signedUrl);
+
+    res.json({ signedUrl });
   } catch (err) {
     console.error(err);
-    res.status(500).send("Failed to fetch certificate");
+    res.status(500).json({ error: "Failed to generate signed URL" });
   }
 });
 
@@ -2239,21 +2243,21 @@ app.delete("/guides/:id/reject", async (req, res) => {
 });
 
 // Admin route to get signed URL for a guide's Aadhaar
-app.get("/admin/guide/:id/aadhaar", async (req, res) => {
+app.get("/admin/guide/:id/gov-certificate", async (req, res) => {
   try {
     const guideId = req.params.id;
 
     // Fetch guide from DB
     const guide = await GuideRegistration.findById(guideId);
-    if (!guide || !guide.aadhaarCardPublicId) {
+    if (!guide || !guide.govtCertificatePublicId) {
       return res.status(404).json({ error: "Aadhaar not found" });
     }
 
     // Generate signed URL (valid for 10 min)
-    const signedUrl = cloudinary.url(guide.aadhaarCardPublicId, {
+    const signedUrl = cloudinary.url(guide.govtCertificatePublicId, {
       type: "private",
       sign_url: true,
-      expires_at: Math.floor(Date.now() / 1000) + 600, // 10 minutes
+      expires_at: Math.floor(Date.now() / 1000) + 600,
     });
 
     res.json({ signedUrl });
