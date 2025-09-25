@@ -2328,12 +2328,16 @@ app.patch("/update-guide-profile", async (req, res) => {
   }
 });
 app.get("/earnings", async (req, res) => {
-  const { email } = req.user?.email; // guide email from auth
   try {
+    // Get guideEmail from query instead of req.user
+    const guideEmail = req.query.guideEmail;
+    if (!guideEmail) return res.status(400).json({ error: "guideEmail required" });
+
     const completedBookings = await Booking.find({
-      guideEmail: email,
+      guideEmail,
       status: "Completed",
     });
+
     const totalEarnings = completedBookings.reduce((sum, b) => sum + b.price, 0);
     res.json({ totalEarnings, completedBookings });
   } catch (err) {
@@ -2341,6 +2345,7 @@ app.get("/earnings", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch earnings" });
   }
 });
+
 app.get('/guide-details', async (req, res) => {
   try {
     const { email } = req.query; // pass guide email as query parameter
