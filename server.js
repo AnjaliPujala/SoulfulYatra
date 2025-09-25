@@ -2328,7 +2328,7 @@ app.patch("/update-guide-profile", async (req, res) => {
   }
 });
 app.get("/earnings", async (req, res) => {
-  const { email } = req.user; // guide email from auth
+  const { email } = req.user?.email; // guide email from auth
   try {
     const completedBookings = await Booking.find({
       guideEmail: email,
