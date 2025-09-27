@@ -2447,10 +2447,16 @@ const connectPlacesDB = async () => {
       useUnifiedTopology: true,
     });
 
-    connection.once('open', () => console.log('Connected to Places database'));
-    connection.on('error', (err) => console.error('Places DB connection error:', err));
+   connection.once('open', () => {
+        console.log('Connected to Places database');
+        placesDb = connection.db;
+        resolve(placesDb);
+      });
 
-    placesDb = connection.db;
+      connection.on('error', (err) => {
+        console.error('Places DB connection error:', err);
+        reject(err);
+      });
     return placesDb;
   } catch (error) {
     console.error('MongoDB connection error (Places DB):', error);
