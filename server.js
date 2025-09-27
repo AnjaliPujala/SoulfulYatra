@@ -2360,8 +2360,71 @@ app.get('/guide-details', async (req, res) => {
     res.status(500).json({ success: false, error: "Failed to fetch guide details" });
   }
 });
+
+///----------places for planning
+const connectPlacesDB = require('./placesDb');
+let placesDb;
+
+connectPlacesDB().then((db) => {
+  placesDb = db;
+}).catch(err => console.error(err));
+
+// GET places in a state
+app.get('/places-state-regions', async (req, res) => {
+  try {
+    const state = req.query.state; 
+    if (!state) {
+      return res.status(400).json({ error: 'State query parameter is required' });
+    }
+
+    const collection = placesDb.collection('places_regions');
+    const places = await collection.find({ state: state }).toArray();
+
+    res.json({ count: places.length, data: places });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+
+app.post('/get-places-from-region-id', async (req, res) => {
+  try {
+    const { region_ids, categories } = req.body;
+
+    if (!region_ids || !region_ids.length) {
+      return res.status(400).json({ message: 'Region IDs required' });
+    }
+
+    if (!categories || !categories.length) {
+      return res.status(400).json({ message: 'Categories required' });
+    }
+
+    // Create regex filters for each category
+    const categoryFilters = categories.map(cat => ({
+      categories: { $regex: new RegExp(cat, 'i') } // case-insensitive
+    }));
+
+    const places = await placesDb
+      .collection('places_regions_spots')
+      .find({
+        region_id: { $in: region_ids },
+        $or: categoryFilters
+      })
+      .toArray();
+
+    res.json(places);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
 // ------------------- SERVER START -------------------
 connectDB().then(() => {
+  
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
 }).catch(err => console.error(err));
