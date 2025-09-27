@@ -2395,25 +2395,32 @@ app.post('/get-places-from-region-id', async (req, res) => {
       return res.status(400).json({ message: 'Categories required' });
     }
 
-    // Create regex filters for each category
-    const categoryFilters = categories.map(cat => ({
-      categories: { $regex: new RegExp(cat, 'i') } // case-insensitive
-    }));
+    // Normalize user categories (trim and lowercase)
+    const userCategories = categories.map(cat => cat.trim().toLowerCase());
 
-    const places = await placesDb
+    // Fetch all places in the given regions first
+    const allPlaces = await placesDb
       .collection('places_regions_spots')
-      .find({
-        region_id: { $in: region_ids },
-        $or: categoryFilters
-      })
+      .find({ region_id: { $in: region_ids } })
       .toArray();
 
-    res.json(places);
+    // Filter places where at least one category matches
+    const filteredPlaces = allPlaces.filter(place => {
+      const placeCategories = place.categories
+        .split(',')                   // split by comma
+        .map(cat => cat.trim().toLowerCase()); // normalize
+
+      // Check if any user category matches place category
+      return userCategories.some(cat => placeCategories.includes(cat));
+    });
+
+    res.json(filteredPlaces);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 
 
