@@ -2438,16 +2438,12 @@ const connectDB = async () => {
   }
 };
 
-
 const connectPlacesDB = async () => {
-  try {
-    // use createConnection for the second DB
-    const connection = mongoose.createConnection(process.env.MONGO_PLACES_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+  return new Promise((resolve, reject) => {
+    try {
+      const connection = mongoose.createConnection(process.env.MONGO_PLACES_URI);
 
-   connection.once('open', () => {
+      connection.once('open', () => {
         console.log('Connected to Places database');
         placesDb = connection.db;
         resolve(placesDb);
@@ -2457,11 +2453,11 @@ const connectPlacesDB = async () => {
         console.error('Places DB connection error:', err);
         reject(err);
       });
-    return placesDb;
-  } catch (error) {
-    console.error('MongoDB connection error (Places DB):', error);
-    throw error;
-  }
+    } catch (error) {
+      console.error('MongoDB connection error (Places DB):', error);
+      reject(error);
+    }
+  });
 };
 
 const startServer = async () => {
