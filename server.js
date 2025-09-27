@@ -38,7 +38,7 @@ app.use(cors({
 }));
 
 // MongoDB connection
-const mongoURI = process.env.MONGO_URI;
+/*const mongoURI = process.env.MONGO_URI;
 let db;
 const connectDB = async () => {
   try {
@@ -52,7 +52,7 @@ const connectDB = async () => {
     console.error('MongoDB connection error:', error);
     throw error;
   }
-};
+};*/
 
 // User model
 const User = require('./models/Users');
@@ -2362,12 +2362,7 @@ app.get('/guide-details', async (req, res) => {
 });
 
 ///----------places for planning
-const connectPlacesDB = require('./placesDb');
-let placesDb;
 
-connectPlacesDB().then((db) => {
-  placesDb = db;
-}).catch(err => console.error(err));
 
 // GET places in a state
 app.get('/places-state-regions', async (req, res) => {
@@ -2423,8 +2418,56 @@ app.post('/get-places-from-region-id', async (req, res) => {
 
 
 // ------------------- SERVER START -------------------
-connectDB().then(() => {
-  
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
-}).catch(err => console.error(err));
+
+
+
+const mongoURI = process.env.MONGO_URI;
+let db;
+const connectDB = async () => {
+  try {
+    const client = await mongoose.connect(mongoURI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log('Connected to MongoDB');
+    db = client.connection.db;
+    return db;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+};
+
+let placesDb;
+const connectPlacesDB = async () => {
+  try {
+    // use createConnection for the second DB
+    const connection = mongoose.createConnection(process.env.MONGO_PLACES_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+
+    connection.once('open', () => console.log('Connected to Places database'));
+    connection.on('error', (err) => console.error('Places DB connection error:', err));
+
+    placesDb = connection.db;
+    return placesDb;
+  } catch (error) {
+    console.error('MongoDB connection error (Places DB):', error);
+    throw error;
+  }
+};
+
+const startServer = async () => {
+  try {
+    await connectDB();         // main DB
+    await connectPlacesDB();   // places DB
+
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`Enhanced SoulfulYatra server running on port ${PORT}`));
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+startServer();
