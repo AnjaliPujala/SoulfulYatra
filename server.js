@@ -25,7 +25,7 @@ const allowedOrigins = [
   'https://soulful-yatra.netlify.app',
   'https://soulful-yatra-updated.netlify.app'
 ];
-
+let db;
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -2363,7 +2363,7 @@ app.get('/guide-details', async (req, res) => {
 
 ///----------places for planning
 
-
+let placesDb;
 // GET places in a state
 app.get('/places-state-regions', async (req, res) => {
   try {
@@ -2422,7 +2422,7 @@ app.post('/get-places-from-region-id', async (req, res) => {
 
 
 const mongoURI = process.env.MONGO_URI;
-let db;
+
 const connectDB = async () => {
   try {
     const client = await mongoose.connect(mongoURI, {
@@ -2438,7 +2438,7 @@ const connectDB = async () => {
   }
 };
 
-let placesDb;
+
 const connectPlacesDB = async () => {
   try {
     // use createConnection for the second DB
