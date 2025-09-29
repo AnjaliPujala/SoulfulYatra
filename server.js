@@ -2467,18 +2467,23 @@ app.post('/get-places-from-region-id', async (req, res) => {
 
 app.post('/generate-itinerary-modified', async (req, res) => {
   try {
-    /*const { user } = await getAuthenticatedUser(req, res);
-    if (!user) {
-      return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+    /*const { user } = await getAuthenticatedUser(req, res); 
+    if (!user) { 
+    return res.status(401).json({ loggedIn: false, error: 'Authentication required' }); 
     }*/
     const { region_id, days, interests, budget } = req.body;
+
     if (!region_id || !days) {
       return res.status(400).json({ error: 'region_id and days are required' });
     }
 
+    // ✅ Convert region_id to Int32
+    const { Int32 } = require('mongodb');
+    const regionIdInt = new Int32(parseInt(region_id, 10));
+
     // 1. Fetch spots by region_id
     const collection = placesDb.collection('places_regions_spots');
-    const spots = await collection.find({ region_id: String(region_id) }).toArray();
+    const spots = await collection.find({ region_id: regionIdInt }).toArray();
 
     if (!spots.length) {
       return res.status(404).json({ error: 'No spots found for this region' });
@@ -2489,7 +2494,7 @@ app.post('/generate-itinerary-modified', async (req, res) => {
       `${s.place_name} (Categories: ${s.categories}, Timings: ${s.timings}, Entry Fee: ${s.entry_fee}, Best Time: ${s.best_time})`
     ).join('\n');
 
-    // 3. Build prompt for JSON response
+    // 3. Build prompt
     const prompt = `
 You are a travel assistant. Plan a ${days}-day itinerary for region ${region_id}.
 User is interested in ${interests || 'general activities'} with a budget of ${budget || 'flexible'}.
@@ -2519,7 +2524,7 @@ Return ONLY valid JSON in the following format:
     // 4. Call OpenAI
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      response_format: { type: "json_object" }, // ensures JSON
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "You are a helpful travel assistant that always responds with valid JSON." },
         { role: "user", content: prompt }
@@ -2534,6 +2539,7 @@ Return ONLY valid JSON in the following format:
     res.status(500).json({ error: 'Failed to generate itinerary' });
   }
 });
+
 
 
 // ------------------- SERVER START -------------------
