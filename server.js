@@ -2552,11 +2552,18 @@ function generateTimeSlots(dailySpots) {
 
   for (let i = 0; i < dailySpots.length; i++) {
     const spot = dailySpots[i];
+
+    // Duration in minutes
     const dur = spot.avg_duration ? parseInt(spot.avg_duration) : 60;
 
+    // Add travel time from previous spot
+    const travelMin = i === 0 ? 0 : parseInt(spot._travelTime) || 5;
+
+    const totalMin = dur + travelMin;
+
     const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-    let endHour = hour + Math.floor((minute + dur) / 60);
-    let endMinute = (minute + dur) % 60;
+    let endHour = hour + Math.floor((minute + totalMin) / 60);
+    let endMinute = (minute + totalMin) % 60;
     const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
 
     timeSlots.push({
@@ -2573,6 +2580,7 @@ function generateTimeSlots(dailySpots) {
 
   return timeSlots;
 }
+
 
 // ------------------- API -------------------
 app.post("/generate-itinerary-modified", async (req, res) => {
