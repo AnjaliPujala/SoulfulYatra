@@ -2477,7 +2477,7 @@ app.post('/generate-itinerary-modified', async (req, res) => {
     }
 
     // 1. Fetch spots by region_id
-    const collection = placesDb.collection('places_spots');
+    const collection = placesDb.collection('places_regions_spots');
     const spots = await collection.find({ region_id: String(region_id) }).toArray();
 
     if (!spots.length) {
