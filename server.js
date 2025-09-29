@@ -2470,9 +2470,8 @@ const { Int32 } = require("mongodb");
 
 // ------------------- Helper Functions -------------------
 function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // km
+  const R = 6371;
   const toRad = (deg) => (deg * Math.PI) / 180;
-
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
@@ -2482,11 +2481,12 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// Travel time in minutes (average speed 30 km/h)
 function travelTime(distanceKm) {
-  return Math.round((distanceKm / 30) * 60); // 30 km/h average speed
+  return Math.round((distanceKm / 30) * 60);
 }
 
-// Order spots based on interests + nearest distance
+// Order spots based on interests and nearest distance
 function orderSpots(spots, interests) {
   const visited = [];
   const remaining = [...spots];
@@ -2504,8 +2504,6 @@ function orderSpots(spots, interests) {
   };
 
   remaining.sort((a, b) => scoreSpot(b) - scoreSpot(a));
-
-  // Pick first spot
   let current = remaining.shift();
   current._distanceFromPrev = "0 km";
   current._travelTime = "0 min";
@@ -2545,6 +2543,39 @@ function splitSpotsByDays(orderedSpots, days) {
   return dailySpots;
 }
 
+// Generate time slots sequentially based on avg_duration + travel time
+function generateTimeSlots(dailySpots) {
+  const timeSlots = [];
+  let hour = 9; // start at 9AM
+  let minute = 0;
+
+  for (let i = 0; i < dailySpots.length; i++) {
+    const spot = dailySpots[i];
+    const [durationMin] = spot.avg_duration
+      ? spot.avg_duration.match(/\d+/g)?.map(Number)
+      : [60];
+    const dur = durationMin || 60; // default 60 min if missing
+
+    const startTime = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+    let endHour = hour + Math.floor((minute + dur) / 60);
+    let endMinute = (minute + dur) % 60;
+    const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
+
+    timeSlots.push({
+      time: `${startTime} - ${endTime}`,
+      activity: spot.place_name,
+      travel: `${spot._distanceFromPrev}, ${spot._travelTime}`,
+      tips: "", // to be filled by AI
+      budget: "" // to be filled by AI
+    });
+
+    hour = endHour;
+    minute = endMinute;
+  }
+
+  return timeSlots;
+}
+
 // ------------------- API -------------------
 app.post("/generate-itinerary-modified", async (req, res) => {
   try {
@@ -2553,8 +2584,8 @@ app.post("/generate-itinerary-modified", async (req, res) => {
       return res.status(400).json({ error: "region_id and days are required" });
     }
 
-    const collection = placesDb.collection("places_regions_spots");
     const regionIdInt = new Int32(parseInt(region_id, 10));
+    const collection = placesDb.collection("places_regions_spots");
     const spots = await collection.find({ region_id: regionIdInt }).toArray();
 
     if (!spots.length) {
@@ -2564,78 +2595,68 @@ app.post("/generate-itinerary-modified", async (req, res) => {
     // 1. Order spots
     const orderedSpots = orderSpots(spots, interests);
 
-    // 2. Split spots across days
+    // 2. Split by days
     const dailySpotsList = splitSpotsByDays(orderedSpots, days);
 
-    // 3. Prepare OpenAI prompt (AI adds tips, time slots, budget)
-    const dayPrompts = dailySpotsList.map((daySpots, idx) => {
-      const spotsText = daySpots
-        .map(
-          (s, i) =>
-            `${i + 1}. ${s.place_name} | Categories: ${s.categories} | Avg Duration: ${s.avg_duration} | Distance from prev: ${
-              s._distanceFromPrev
-            } | Travel Time: ${s._travelTime}`
-        )
-        .join("\n");
-      return `Day ${idx + 1} attractions:\n${spotsText}`;
-    });
+    // 3. Generate time slots
+    const dailySchedules = dailySpotsList.map((dailySpots, idx) => ({
+      day: idx + 1,
+      schedule: generateTimeSlots(dailySpots)
+    }));
 
-    const prompt = `
-You are a travel assistant. Generate a ${days}-day itinerary for the user.
-User interests: ${interests || "general"}.
-Budget: ${budget || "flexible"}.
-
-Use ONLY the provided attractions for each day:
-
-${dayPrompts.join("\n\n")}
-
-Requirements:
-1. Generate time slots for each activity.
-2. Include tips for each spot.
-3. Include estimated budget per activity.
-4. DO NOT modify travel distances or times.
-5. Return ONLY valid JSON in the format:
-
+    // 4. Build AI prompt for tips & budget only
+    const aiPrompt = dailySchedules
+      .map(
+        (day) =>
+          `Day ${day.day} schedule:\n${day.schedule
+            .map((s) => `${s.activity} | Travel: ${s.travel}`)
+            .join("\n")}`
+      )
+      .join("\n\n") +
+      `\n\nFor each activity, provide short tips for visiting and estimated budget in INR. Return ONLY JSON matching the structure:
 {
   "itinerary": [
     {
       "day": <day_number>,
       "schedule": [
         {
-          "time": "9AM - 11AM",
+          "time": "start - end",
           "activity": "Place Name",
-          "travel": "2 km, 10 min",
-          "tips": "Tips",
+          "travel": "distance, time",
+          "tips": "short tips",
           "budget": "₹100"
         }
       ]
     }
   ]
-}
-`;
+}`;
 
-    // 4. Call OpenAI
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        {
-          role: "system",
-          content:
-            "You are a helpful travel assistant that responds only in valid JSON format."
-        },
-        { role: "user", content: prompt }
+        { role: "system", content: "You are a helpful travel assistant that only fills tips and budget in JSON." },
+        { role: "user", content: aiPrompt }
       ]
     });
 
-    const itinerary = JSON.parse(response.choices[0].message.content);
-    res.json(itinerary);
+    const aiItinerary = JSON.parse(response.choices[0].message.content);
+
+    // 5. Merge AI tips & budget with our computed time/travel
+    const finalItinerary = aiItinerary.itinerary.map((day, i) => ({
+      day: day.day,
+      schedule: day.schedule.map((s, j) => ({
+        ...dailySchedules[i].schedule[j],
+        tips: s.tips,
+        budget: s.budget
+      }))
+    }));
+
+    res.json({ itinerary: finalItinerary });
   } catch (err) {
     console.error("Itinerary generation error:", err);
     res.status(500).json({ error: "Failed to generate itinerary" });
   }
 });
-
-
 // ------------------- SERVER START -------------------
 
 
