@@ -2468,20 +2468,20 @@ app.post('/get-places-from-region-id', async (req, res) => {
 // ------------------- Helper: Haversine -------------------
 // ------------------- Helpers -------------------
 function haversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
+  const R = 6371; // km
   const toRad = (deg) => (deg * Math.PI) / 180;
-
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * c; // distance in km
 }
 
 function travelTime(distanceKm) {
-  return Math.round((distanceKm / 30) * 60); // 40 km/h average speed
+  const avgSpeedKmH = 30; // realistic city driving
+  return Math.round((distanceKm / avgSpeedKmH) * 60); // minutes
 }
 
 function orderSpots(spots, interests) {
@@ -2502,6 +2502,8 @@ function orderSpots(spots, interests) {
 
   remaining.sort((a, b) => scoreSpot(b) - scoreSpot(a));
   let current = remaining.shift();
+  current._distanceFromPrev = "0 km";
+  current._travelTime = "0 min";
   visited.push(current);
 
   while (remaining.length > 0) {
@@ -2538,14 +2540,6 @@ function splitSpotsByDays(orderedSpots, days) {
   return dailySpots;
 }
 
-// Convert avg_duration string to number in hours
-function parseAvgDuration(avgDuration) {
-  if (!avgDuration) return 2; // default 2 hours
-  const match = avgDuration.match(/\d+/g);
-  if (!match) return 2;
-  return match.length === 1 ? parseInt(match[0], 10) : (parseInt(match[0], 10) + parseInt(match[1], 10)) / 2;
-}
-
 // ------------------- API -------------------
 app.post("/generate-itinerary-modified", async (req, res) => {
   try {
@@ -2553,7 +2547,8 @@ app.post("/generate-itinerary-modified", async (req, res) => {
     if (region_id === undefined || days === undefined) {
       return res.status(400).json({ error: "region_id and days are required" });
     }
-    const {Int32} = require('mongodb');
+    const {Int32}=require('mongodb');
+
     const regionIdInt = new Int32(parseInt(region_id, 10));
     const collection = placesDb.collection("places_regions_spots");
     const spots = await collection.find({ region_id: regionIdInt }).toArray();
@@ -2570,6 +2565,10 @@ app.post("/generate-itinerary-modified", async (req, res) => {
 
     // 3. Build OpenAI prompt for each day
     const dayPrompts = dailySpotsList.map((daySpots, idx) => {
+      // first spot of the day: distance 0
+      daySpots[0]._distanceFromPrev = "0 km";
+      daySpots[0]._travelTime = "0 min";
+
       const spotsText = daySpots
         .map(
           (s, i) =>
@@ -2633,7 +2632,6 @@ Requirements:
     res.status(500).json({ error: "Failed to generate itinerary" });
   }
 });
-
 
 
 
