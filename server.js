@@ -2567,47 +2567,41 @@ function generateTimeSlots(dailySpots) {
 
   for (let i = 0; i < dailySpots.length; i++) {
     const spot = dailySpots[i];
-    // Avg duration in minutes
-    const dur = spot.avg_duration
-      ? parseInt(spot.avg_duration) // assuming avg_duration like "120" minutes
-      : 60;
+    const dur = spot.avg_duration ? parseInt(spot.avg_duration) : 60; // default 60 min
 
-    // Start time
-    let startHour = hour;
-    let startMinute = minute;
+    // Round start time
+    ({ hour, minute } = roundToHalfHour(hour, minute));
+    const startHour = hour;
+    const startMinute = minute;
 
-    // Round to nearest half hour
-    ({ hour: startHour, minute: startMinute } = roundToHalfHour(
-      startHour,
-      startMinute
-    ));
-
-    // End time
+    // Compute end time
     let endMinute = startMinute + dur;
     let endHour = startHour + Math.floor(endMinute / 60);
     endMinute = endMinute % 60;
 
     schedule.push({
-      time: `${formatTime(startHour, startMinute)} - ${formatTime(
-        endHour,
-        endMinute
-      )}`,
+      time: `${formatTime(startHour, startMinute)} - ${formatTime(endHour, endMinute)}`,
       activity: spot.place_name,
       travel: `${spot._distanceFromPrev}, ${spot._travelTime}`,
-      tips: "", // AI fills
-      budget: "" // AI fills
+      tips: "",
+      budget: ""
     });
 
-    // Update hour/minute for next spot
-    // Add travel time to next spot
-    const travel = i + 1 < dailySpots.length ? travelTime(parseFloat(dailySpots[i + 1]._distanceFromPrev)) : 0;
-    minute = endMinute + travel;
-    hour = endHour + Math.floor(minute / 60);
-    minute = minute % 60;
+    // Update hour/minute for next spot including travel time to next
+    if (i + 1 < dailySpots.length) {
+      const travelMin = travelTime(parseFloat(dailySpots[i + 1]._distanceFromPrev));
+      endMinute += travelMin;
+      endHour += Math.floor(endMinute / 60);
+      endMinute = endMinute % 60;
+
+      // Round next start time to nearest half hour
+      ({ hour, minute } = roundToHalfHour(endHour, endMinute));
+    }
   }
 
   return schedule;
 }
+
 
 // ------------------- API -------------------
 app.post("/generate-itinerary-modified", async (req, res) => {
