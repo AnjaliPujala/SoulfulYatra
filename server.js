@@ -2482,13 +2482,14 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 // Travel time in minutes (4 min per km)
+// Travel time in minutes (4 min per km)
 function travelTime(distanceKm) {
   return Math.round(distanceKm * 4);
 }
 
 // Round to nearest half hour
 function roundToHalfHour(hour, minute) {
-  if (minute === 0 || minute <= 15) return { hour, minute: 0 };
+  if (minute <= 15) return { hour, minute: 0 };
   if (minute <= 45) return { hour, minute: 30 };
   return { hour: hour + 1, minute: 0 };
 }
@@ -2500,6 +2501,51 @@ function formatTime(hour, minute) {
   return `${h.toString().padStart(2, "0")}:${minute
     .toString()
     .padStart(2, "0")} ${suffix}`;
+}
+
+// Generate sequential realistic time slots
+function generateTimeSlots(dailySpots) {
+  const schedule = [];
+  let hour = 9;
+  let minute = 0;
+
+  for (let i = 0; i < dailySpots.length; i++) {
+    const spot = dailySpots[i];
+
+    // Average duration in minutes
+    const dur = spot.avg_duration
+      ? parseInt(spot.avg_duration) // e.g., 60, 120
+      : 60;
+
+    // Round current start time
+    ({ hour, minute } = roundToHalfHour(hour, minute));
+    const startHour = hour;
+    const startMinute = minute;
+
+    // End time
+    let endMinute = startMinute + dur;
+    let endHour = startHour + Math.floor(endMinute / 60);
+    endMinute = endMinute % 60;
+
+    schedule.push({
+      time: `${formatTime(startHour, startMinute)} - ${formatTime(
+        endHour,
+        endMinute
+      )}`,
+      activity: spot.place_name,
+      travel: `${spot._distanceFromPrev}, ${spot._travelTime}`,
+      tips: "", // AI fills later
+      budget: "" // AI fills later
+    });
+
+    // Prepare time for next spot: end time + travel time
+    const travel = i + 1 < dailySpots.length ? travelTime(parseFloat(dailySpots[i + 1]._distanceFromPrev)) : 0;
+    minute = endMinute + travel;
+    hour = endHour + Math.floor(minute / 60);
+    minute = minute % 60;
+  }
+
+  return schedule;
 }
 
 // Order spots by interests + nearest distance
@@ -2559,48 +2605,6 @@ function splitSpotsByDays(orderedSpots, days) {
   return dailySpots;
 }
 
-// Generate realistic time slots
-function generateTimeSlots(dailySpots) {
-  const schedule = [];
-  let hour = 9;
-  let minute = 0;
-
-  for (let i = 0; i < dailySpots.length; i++) {
-    const spot = dailySpots[i];
-    const dur = spot.avg_duration ? parseInt(spot.avg_duration) : 60; // default 60 min
-
-    // Round start time
-    ({ hour, minute } = roundToHalfHour(hour, minute));
-    const startHour = hour;
-    const startMinute = minute;
-
-    // Compute end time
-    let endMinute = startMinute + dur;
-    let endHour = startHour + Math.floor(endMinute / 60);
-    endMinute = endMinute % 60;
-
-    schedule.push({
-      time: `${formatTime(startHour, startMinute)} - ${formatTime(endHour, endMinute)}`,
-      activity: spot.place_name,
-      travel: `${spot._distanceFromPrev}, ${spot._travelTime}`,
-      tips: "",
-      budget: ""
-    });
-
-    // Update hour/minute for next spot including travel time to next
-    if (i + 1 < dailySpots.length) {
-      const travelMin = travelTime(parseFloat(dailySpots[i + 1]._distanceFromPrev));
-      endMinute += travelMin;
-      endHour += Math.floor(endMinute / 60);
-      endMinute = endMinute % 60;
-
-      // Round next start time to nearest half hour
-      ({ hour, minute } = roundToHalfHour(endHour, endMinute));
-    }
-  }
-
-  return schedule;
-}
 
 
 // ------------------- API -------------------
