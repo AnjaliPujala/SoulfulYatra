@@ -2465,44 +2465,109 @@ app.post('/get-places-from-region-id', async (req, res) => {
 
 
 
-app.post('/generate-itinerary-modified', async (req, res) => {
+// ------------------- Helper: Haversine -------------------
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const toRad = (deg) => (deg * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // km
+}
+
+// ------------------- Helper: Order Spots -------------------
+function orderSpots(spots, interests) {
+  const visited = [];
+  const remaining = [...spots];
+
+  const scoreSpot = (spot) => {
+    let score = 0;
+    if (interests) {
+      const lowerInt = interests.toLowerCase();
+      if (spot.categories?.toLowerCase().includes(lowerInt)) score += 2;
+      if (spot.activities?.toLowerCase().includes(lowerInt)) score += 1;
+    }
+    if (spot.popularity_level === "high") score += 2;
+    else if (spot.popularity_level === "medium") score += 1;
+    return score;
+  };
+
+  // Start with best scoring spot
+  remaining.sort((a, b) => scoreSpot(b) - scoreSpot(a));
+  let current = remaining.shift();
+  visited.push(current);
+
+  while (remaining.length > 0) {
+    let nearestIdx = 0;
+    let nearestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const dist = haversineDistance(
+        current.latitude,
+        current.longitude,
+        remaining[i].latitude,
+        remaining[i].longitude
+      );
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestIdx = i;
+      }
+    }
+    current = remaining.splice(nearestIdx, 1)[0];
+    current._distanceFromPrev = nearestDist.toFixed(2) + " km";
+    visited.push(current);
+  }
+
+  return visited;
+}
+
+// ------------------- API: Generate Itinerary -------------------
+app.post("/generate-itinerary-modified", async (req, res) => {
   try {
-    /*const { user } = await getAuthenticatedUser(req, res); 
-    if (!user) { 
-    return res.status(401).json({ loggedIn: false, error: 'Authentication required' }); 
-    }*/
     const { region_id, days, interests, budget } = req.body;
 
-    if (!region_id || !days) {
-      return res.status(400).json({ error: 'region_id and days are required' });
+    if (region_id === undefined || days === undefined) {
+      return res
+        .status(400)
+        .json({ error: "region_id and days are required" });
     }
 
-    // ✅ Convert region_id to Int32
-    const { Int32 } = require('mongodb');
     const regionIdInt = new Int32(parseInt(region_id, 10));
 
-    // 1. Fetch spots by region_id
-    const collection = placesDb.collection('places_regions_spots');
+    const collection = placesDb.collection("places_regions_spots");
     const spots = await collection.find({ region_id: regionIdInt }).toArray();
 
     if (!spots.length) {
-      return res.status(404).json({ error: 'No spots found for this region' });
+      return res
+        .status(404)
+        .json({ error: "No spots found for this region" });
     }
 
-    // 2. Convert spots into readable context
-    const spotsList = spots.map(s =>
-      `${s.place_name} (Categories: ${s.categories}, Timings: ${s.timings}, Entry Fee: ${s.entry_fee}, Best Time: ${s.best_time})`
-    ).join('\n');
+    // Order spots
+    const orderedSpots = orderSpots(spots, interests);
 
-    // 3. Build prompt
+    // Prepare context for AI
+    const spotsList = orderedSpots
+      .map((s, idx) => {
+        let distNote = idx > 0 ? ` (Distance from previous: ${s._distanceFromPrev})` : "";
+        return `${s.place_name}${distNote} (Categories: ${s.categories}, Timings: ${s.timings}, Entry Fee: ${s.entry_fee}, Best Time: ${s.best_time})`;
+      })
+      .join("\n");
+
+    // Build prompt
     const prompt = `
 You are a travel assistant. Plan a ${days}-day itinerary for region ${region_id}.
-User is interested in ${interests || 'general activities'} with a budget of ${budget || 'flexible'}.
+User is interested in ${interests || "general activities"} with a budget of ${
+      budget || "flexible"
+    }.
 
-Available attractions:
+Available attractions in suggested visiting order:
 ${spotsList}
 
-Return ONLY valid JSON in the following format:
+Return ONLY valid JSON in this format:
 
 {
   "itinerary": [
@@ -2512,6 +2577,7 @@ Return ONLY valid JSON in the following format:
         {
           "time": "start - end",
           "activity": "place or activity",
+          "travel": "distance from previous location and approx time",
           "tips": "short tips",
           "budget": "estimated cost"
         }
@@ -2521,22 +2587,24 @@ Return ONLY valid JSON in the following format:
 }
 `;
 
-    // 4. Call OpenAI
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "You are a helpful travel assistant that always responds with valid JSON." },
-        { role: "user", content: prompt }
-      ]
+        {
+          role: "system",
+          content:
+            "You are a helpful travel assistant that always responds with valid JSON.",
+        },
+        { role: "user", content: prompt },
+      ],
     });
 
     const itinerary = JSON.parse(response.choices[0].message.content);
     res.json(itinerary);
-
   } catch (err) {
-    console.error('Itinerary generation error:', err);
-    res.status(500).json({ error: 'Failed to generate itinerary' });
+    console.error("Itinerary generation error:", err);
+    res.status(500).json({ error: "Failed to generate itinerary" });
   }
 });
 
