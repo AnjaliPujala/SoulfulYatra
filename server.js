@@ -2406,6 +2406,25 @@ app.get('/places-by-categories', async (req, res) => {
     res.status(500).json({ error: 'Something went wrong' });
   }
 });
+app.get('/spots-by-region/:region_id', async (req, res) => {
+  try {
+    const regionId = req.params.region_id; // e.g., /spots-by-region/1011
+
+    if (!regionId) {
+      return res.status(400).json({ error: 'region_id parameter is required' });
+    }
+
+    const collection = placesDb.collection('places_spots'); // adjust name if different
+
+    // Find spots with matching region_id (make sure both are same type: string/number)
+    const spots = await collection.find({ region_id: regionId }).toArray();
+
+    res.json({ count: spots.length, data: spots });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
 
 
 app.post('/get-places-from-region-id', async (req, res) => {
@@ -2444,6 +2463,78 @@ app.post('/get-places-from-region-id', async (req, res) => {
 });
 
 
+
+
+app.post('/generate-itinerary-modified', async (req, res) => {
+  try {
+    const { user } = await getAuthenticatedUser(req, res);
+    if (!user) {
+      return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
+    }
+
+    const { region_id, days, interests, budget } = req.body;
+    if (!region_id || !days) {
+      return res.status(400).json({ error: 'region_id and days are required' });
+    }
+
+    // 1. Fetch spots by region_id
+    const collection = placesDb.collection('places_spots');
+    const spots = await collection.find({ region_id: String(region_id) }).toArray();
+
+    if (!spots.length) {
+      return res.status(404).json({ error: 'No spots found for this region' });
+    }
+
+    // 2. Convert spots into readable context
+    const spotsList = spots.map(s =>
+      `${s.place_name} (Categories: ${s.categories}, Timings: ${s.timings}, Entry Fee: ${s.entry_fee}, Best Time: ${s.best_time})`
+    ).join('\n');
+
+    // 3. Build prompt for JSON response
+    const prompt = `
+You are a travel assistant. Plan a ${days}-day itinerary for region ${region_id}.
+User is interested in ${interests || 'general activities'} with a budget of ${budget || 'flexible'}.
+
+Available attractions:
+${spotsList}
+
+Return ONLY valid JSON in the following format:
+
+{
+  "itinerary": [
+    {
+      "day": <day_number>,
+      "schedule": [
+        {
+          "time": "start - end",
+          "activity": "place or activity",
+          "tips": "short tips",
+          "budget": "estimated cost"
+        }
+      ]
+    }
+  ]
+}
+`;
+
+    // 4. Call OpenAI
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" }, // ensures JSON
+      messages: [
+        { role: "system", content: "You are a helpful travel assistant that always responds with valid JSON." },
+        { role: "user", content: prompt }
+      ]
+    });
+
+    const itinerary = JSON.parse(response.choices[0].message.content);
+    res.json(itinerary);
+
+  } catch (err) {
+    console.error('Itinerary generation error:', err);
+    res.status(500).json({ error: 'Failed to generate itinerary' });
+  }
+});
 
 
 // ------------------- SERVER START -------------------
