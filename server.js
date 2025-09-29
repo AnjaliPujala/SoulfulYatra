@@ -2661,9 +2661,22 @@ app.post("/generate-itinerary-modified", async (req, res) => {
       ]
     });
 
-    let aiContent = response.choices[0].message.content.trim()
-      .replace(/^`+|`+$/g, '').replace(/^```json/, '').replace(/```$/, '');
-    const aiItinerary = JSON.parse(aiContent);
+    let aiContent = response.choices[0].message.content.trim();
+
+// Extract the first {...} block
+    const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(500).json({ error: "AI response JSON not found" });
+    }
+
+    let aiItinerary;
+    try {
+      aiItinerary = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.error("AI JSON parse error:", e, "AI content:", aiContent);
+      return res.status(500).json({ error: "Failed to parse AI JSON" });
+    }
+
 
     // 5. Merge AI tips & budget with computed times
     const finalItinerary = aiItinerary.itinerary.map((day, i) => ({
