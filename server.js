@@ -2467,11 +2467,10 @@ app.post('/get-places-from-region-id', async (req, res) => {
 
 app.post('/generate-itinerary-modified', async (req, res) => {
   try {
-    const { user } = await getAuthenticatedUser(req, res);
+    /*const { user } = await getAuthenticatedUser(req, res);
     if (!user) {
       return res.status(401).json({ loggedIn: false, error: 'Authentication required' });
-    }
-
+    }*/
     const { region_id, days, interests, budget } = req.body;
     if (!region_id || !days) {
       return res.status(400).json({ error: 'region_id and days are required' });
