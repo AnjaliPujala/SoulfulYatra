@@ -2466,24 +2466,27 @@ app.post('/get-places-from-region-id', async (req, res) => {
 
 
 // ------------------- Helper: Haversine -------------------
-// ------------------- Helpers -------------------
+const { Int32 } = require("mongodb");
+
+// ------------------- Helper Functions -------------------
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // km
   const toRad = (deg) => (deg * Math.PI) / 180;
+
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // distance in km
+  return R * c;
 }
 
 function travelTime(distanceKm) {
-  const avgSpeedKmH = 30; // realistic city driving
-  return Math.round((distanceKm / avgSpeedKmH) * 60); // minutes
+  return Math.round((distanceKm / 30) * 60); // 30 km/h average speed
 }
 
+// Order spots based on interests + nearest distance
 function orderSpots(spots, interests) {
   const visited = [];
   const remaining = [...spots];
@@ -2501,6 +2504,8 @@ function orderSpots(spots, interests) {
   };
 
   remaining.sort((a, b) => scoreSpot(b) - scoreSpot(a));
+
+  // Pick first spot
   let current = remaining.shift();
   current._distanceFromPrev = "0 km";
   current._travelTime = "0 min";
@@ -2547,56 +2552,49 @@ app.post("/generate-itinerary-modified", async (req, res) => {
     if (region_id === undefined || days === undefined) {
       return res.status(400).json({ error: "region_id and days are required" });
     }
-    const {Int32}=require('mongodb');
 
-    const regionIdInt = new Int32(parseInt(region_id, 10));
     const collection = placesDb.collection("places_regions_spots");
+    const regionIdInt = new Int32(parseInt(region_id, 10));
     const spots = await collection.find({ region_id: regionIdInt }).toArray();
 
     if (!spots.length) {
       return res.status(404).json({ error: "No spots found for this region" });
     }
 
-    // 1. Order spots based on interest + distance
+    // 1. Order spots
     const orderedSpots = orderSpots(spots, interests);
 
-    // 2. Split spots evenly across requested days
+    // 2. Split spots across days
     const dailySpotsList = splitSpotsByDays(orderedSpots, days);
 
-    // 3. Build OpenAI prompt for each day
+    // 3. Prepare OpenAI prompt (AI adds tips, time slots, budget)
     const dayPrompts = dailySpotsList.map((daySpots, idx) => {
-      // first spot of the day: distance 0
-      daySpots[0]._distanceFromPrev = "0 km";
-      daySpots[0]._travelTime = "0 min";
-
       const spotsText = daySpots
         .map(
           (s, i) =>
-            `${i + 1}. ${s.place_name} | Categories: ${s.categories} | Timings: ${
-              s.timings
-            } | Avg Duration: ${s.avg_duration} | Entry Fee: ${s.entry_fee} | Distance from prev: ${
-              s._distanceFromPrev || "0 km"
-            } | Travel Time: ${s._travelTime || "0 min"} | Tips: ${s.tips || ""}`
+            `${i + 1}. ${s.place_name} | Categories: ${s.categories} | Avg Duration: ${s.avg_duration} | Distance from prev: ${
+              s._distanceFromPrev
+            } | Travel Time: ${s._travelTime}`
         )
         .join("\n");
       return `Day ${idx + 1} attractions:\n${spotsText}`;
     });
 
     const prompt = `
-You are a travel assistant. Plan a ${days}-day itinerary for a user.  
-User interests: ${interests || "general activities"}  
-Budget: ${budget || "flexible"}
+You are a travel assistant. Generate a ${days}-day itinerary for the user.
+User interests: ${interests || "general"}.
+Budget: ${budget || "flexible"}.
 
-Use ONLY the attractions provided for each day:
+Use ONLY the provided attractions for each day:
 
 ${dayPrompts.join("\n\n")}
 
 Requirements:
-1. Day-wise itinerary with time slots (morning to evening)
-2. Include travel distance and approx travel time between spots
-3. Include tips for each spot
-4. Include estimated budget per activity
-5. Return ONLY JSON in the format:
+1. Generate time slots for each activity.
+2. Include tips for each spot.
+3. Include estimated budget per activity.
+4. DO NOT modify travel distances or times.
+5. Return ONLY valid JSON in the format:
 
 {
   "itinerary": [
@@ -2607,7 +2605,7 @@ Requirements:
           "time": "9AM - 11AM",
           "activity": "Place Name",
           "travel": "2 km, 10 min",
-          "tips": "Tips to visit",
+          "tips": "Tips",
           "budget": "₹100"
         }
       ]
@@ -2620,9 +2618,13 @@ Requirements:
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "You are a helpful travel assistant that always responds with valid JSON." },
-        { role: "user", content: prompt },
-      ],
+        {
+          role: "system",
+          content:
+            "You are a helpful travel assistant that responds only in valid JSON format."
+        },
+        { role: "user", content: prompt }
+      ]
     });
 
     const itinerary = JSON.parse(response.choices[0].message.content);
@@ -2632,7 +2634,6 @@ Requirements:
     res.status(500).json({ error: "Failed to generate itinerary" });
   }
 });
-
 
 
 // ------------------- SERVER START -------------------
