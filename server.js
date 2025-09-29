@@ -2381,6 +2381,31 @@ app.get('/places-state-regions', async (req, res) => {
     res.status(500).json({ error: 'Something went wrong' });
   }
 });
+app.get('/places-by-categories', async (req, res) => {
+  try {
+    const categoriesQuery = req.query.categories; // e.g., ?categories=Beaches,Natural
+    if (!categoriesQuery) {
+      return res.status(400).json({ error: 'Categories query parameter is required' });
+    }
+
+    // Convert string into array, trim spaces
+    const categories = categoriesQuery.split(',').map(c => c.trim());
+
+    const collection = placesDb.collection('places_regions');
+
+    // Match if any category from user exists in "categories" field
+    const places = await collection.find({
+      $or: categories.map(cat => ({
+        categories: { $regex: new RegExp(cat, 'i') }  // case-insensitive match
+      }))
+    }).toArray();
+
+    res.json({ count: places.length, data: places });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
 
 
 app.post('/get-places-from-region-id', async (req, res) => {
@@ -2395,22 +2420,19 @@ app.post('/get-places-from-region-id', async (req, res) => {
       return res.status(400).json({ message: 'Categories required' });
     }
 
-    // Normalize user categories (trim and lowercase)
+    
     const userCategories = categories.map(cat => cat.trim().toLowerCase());
 
-    // Fetch all places in the given regions first
     const allPlaces = await placesDb
       .collection('places_regions_spots')
       .find({ region_id: { $in: region_ids } })
       .toArray();
 
-    // Filter places where at least one category matches
+    
     const filteredPlaces = allPlaces.filter(place => {
       const placeCategories = place.categories
-        .split(',')                   // split by comma
-        .map(cat => cat.trim().toLowerCase()); // normalize
-
-      // Check if any user category matches place category
+        .split(',')                   
+        .map(cat => cat.trim().toLowerCase()); 
       return userCategories.some(cat => placeCategories.includes(cat));
     });
 
