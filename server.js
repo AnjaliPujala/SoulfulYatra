@@ -2639,7 +2639,10 @@ app.post("/generate-itinerary-modified", async (req, res) => {
       ]
     });
 
-    const aiItinerary = JSON.parse(response.choices[0].message.content);
+    let aiContent = response.choices[0].message.content;
+    aiContent = aiContent.trim().replace(/^`+|`+$/g, '').replace(/^```json/, '').replace(/```$/, '');
+    const aiItinerary = JSON.parse(aiContent);
+
 
     // 5. Merge AI tips & budget with our computed time/travel
     const finalItinerary = aiItinerary.itinerary.map((day, i) => ({
