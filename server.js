@@ -2534,7 +2534,7 @@ app.post("/generate-itinerary-modified", async (req, res) => {
         .status(400)
         .json({ error: "region_id and days are required" });
     }
-
+    const {Int32} = require('mongodb');
     const regionIdInt = new Int32(parseInt(region_id, 10));
 
     const collection = placesDb.collection("places_regions_spots");
