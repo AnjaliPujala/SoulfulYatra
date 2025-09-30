@@ -2700,6 +2700,8 @@ app.post("/generate-itinerary-modified", async (req, res) => {
 });
 
 
+
+
 // Haversine formula to calculate distance between lat/lon in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
   function deg2rad(deg) {
@@ -2728,7 +2730,7 @@ function parseTimings(timingStr) {
   while ((match = regexTimes.exec(timingStr))) {
     let hour = parseInt(match[1], 10);
     const mins = match[2] ? parseInt(match[2], 10) : 0;
-    const pm = match[3] === 'PM';
+    const pm = match[3].toUpperCase() === 'PM';
     if (hour === 12 && !pm) hour = 0; // 12 AM = 0 hour
     if (pm && hour !== 12) hour += 12;
     const timeDecimal = hour + mins / 60;
@@ -2754,17 +2756,13 @@ function parseDuration(durationStr) {
   return 1; // fallback
 }
 
-// Travel speed average km/h (for local travel)
+// Average travel speed km/h (local roads)
 const TRAVEL_SPEED = 30;
 
 // Function to find best order of places per day minimizing travel & fulfilling popularity/interests priority
 function planDayPlaces(places, startPlace = null, interests = []) {
-  // Sort places by popularity_level descending and matching interests presence
-  // popularity_level is string like "high", "medium", "low"
-  // We'll assign numeric scores for sorting
   const popularityScore = { high: 3, medium: 2, low: 1 };
 
-  // Helper to check if place matches any interest category substring (case-insensitive)
   function matchesInterest(placeCategories, interests) {
     if (!interests || interests.length === 0) return false;
     const cats = placeCategories.toLowerCase();
@@ -2773,34 +2771,27 @@ function planDayPlaces(places, startPlace = null, interests = []) {
     );
   }
 
-  // Score places
   places.forEach((p) => {
     p._popularityScore = popularityScore[p.popularity_level?.toLowerCase()] || 0;
     p._interestMatch = matchesInterest(p.categories, interests) ? 1 : 0;
-    p._score = p._popularityScore * 2 + p._interestMatch; // popularity weight stronger
+    p._score = p._popularityScore * 2 + p._interestMatch;
   });
 
-  // Sort initially by score descending
   places.sort((a, b) => b._score - a._score);
 
-  // We'll build a day plan array starting from startPlace or most popular place
   let dayPlan = [];
 
-  // If startPlace is given, start there, otherwise the top scored place
   let currentPlace = startPlace;
   if (!currentPlace) {
     currentPlace = places.shift();
     dayPlan.push(currentPlace);
   } else {
-    // Remove startPlace from places if present
     const idx = places.findIndex((p) => p.ID === currentPlace.ID);
     if (idx >= 0) places.splice(idx, 1);
     dayPlan.push(currentPlace);
   }
 
-  // Greedy nearest next place (among remaining places sorted by score)
   while (places.length > 0) {
-    // Calculate distance from currentPlace to all remaining places
     places.forEach((p) => {
       p._dist = getDistanceFromLatLonInKm(
         currentPlace.latitude,
@@ -2810,8 +2801,6 @@ function planDayPlaces(places, startPlace = null, interests = []) {
       );
     });
 
-    // Find nearest place with highest _score weighted by distance
-    // Sort places by (_score descending, then distance ascending)
     places.sort((a, b) => {
       if (b._score !== a._score) return b._score - a._score;
       return a._dist - b._dist;
@@ -2834,10 +2823,8 @@ function splitPlacesIntoDays(places, days, interests) {
   for (let d = 0; d < days; d++) {
     if (remainingPlaces.length === 0) break;
 
-    // Pick a start place nearest to last place or highest scored place if first day
     let startPlace = null;
     if (lastPlace) {
-      // Find nearest place to lastPlace
       remainingPlaces.forEach((p) => {
         p._distFromLast = getDistanceFromLatLonInKm(
           lastPlace.latitude,
@@ -2850,15 +2837,12 @@ function splitPlacesIntoDays(places, days, interests) {
       startPlace = remainingPlaces[0];
     }
 
-    // Heuristic: roughly distribute places evenly per day
     let placeCountForDay = Math.ceil(remainingPlaces.length / (days - d));
 
-    // Select subset of places for this day
     let todayPlaces = remainingPlaces.slice(0, placeCountForDay);
-    // Plan day order based on popularity + interests + nearest next
+
     let dayPlan = planDayPlaces(todayPlaces, startPlace, interests);
 
-    // Remove planned places from remainingPlaces
     const plannedIds = new Set(dayPlan.map((p) => p.ID));
     remainingPlaces = remainingPlaces.filter((p) => !plannedIds.has(p.ID));
 
@@ -2869,26 +2853,21 @@ function splitPlacesIntoDays(places, days, interests) {
   return allDays;
 }
 
-// Function to assign visit time windows and add travel times between places for a day's plan
+// Assign visit time windows and travel times avoiding overlaps
 function assignTimesToDayPlan(dayPlan) {
-  // Working with 24h decimal start time, example place "timings" field parsed to intervals
-  // We'll try to fit visits one after another respecting place open intervals & travel time
-
   let results = [];
-  let currentTime = 6.0; // assume day start time 6 AM by default
+  let currentTime = 6.0; // Start 6 AM
 
-  // Visit duration average hrs. And travel calculation between consecutive places
   for (let i = 0; i < dayPlan.length; i++) {
     const place = dayPlan[i];
 
-    // Parse timings windows (can be multiple intervals)
-    const intervals = parseTimings(place.timings || place.best_time || '') || [{ start: 6, end: 22 }];
+    let intervals = parseTimings(place.timings || place.best_time || '');
+    if (!intervals || intervals.length === 0) {
+      intervals = [{ start: 6, end: 22 }]; // fallback
+    }
 
-    // Duration hours
     const duration = parseDuration(place.avg_duration || '1 hour');
 
-    // Find earliest suitable visiting window >= currentTime + travel time from prev place
-    // For first place, distance from prev is 'Starting point'
     let travelDist = 'Starting point';
     let travelTime = 0;
     if (i > 0) {
@@ -2901,10 +2880,9 @@ function assignTimesToDayPlan(dayPlan) {
       );
       travelDist = distKm.toFixed(2) + ' km';
       travelTime = distKm / TRAVEL_SPEED;
-      currentTime += travelTime; // add travel time before visiting
+      currentTime += travelTime;
     }
 
-    // Find interval that can fit (currentTime to currentTime + duration)
     let visitStart = null;
     let visitEnd = null;
     for (const interval of intervals) {
@@ -2913,19 +2891,16 @@ function assignTimesToDayPlan(dayPlan) {
         visitEnd = currentTime + duration;
         break;
       } else if (interval.start > currentTime && interval.start + duration <= interval.end) {
-        // Wait until interval start then visit
         visitStart = interval.start;
         visitEnd = interval.start + duration;
         break;
       }
     }
-    // If no suitable window found, fallback to earliest interval anyway
     if (visitStart === null) {
       visitStart = intervals[0].start;
       visitEnd = Math.min(visitStart + duration, intervals[0].end);
     }
 
-    // Prepare time string in 12h format
     function to12hFormat(decimalHours) {
       const h = Math.floor(decimalHours);
       const m = Math.round((decimalHours - h) * 60);
@@ -2935,16 +2910,14 @@ function assignTimesToDayPlan(dayPlan) {
       return `${hour12}:${mm} ${ampm}`;
     }
 
-    const timeStr = `${to12hFormat(visitStart)} - ${to12hFormat(visitEnd)}`;
-
     results.push({
-      time: timeStr,
+      time: `${to12hFormat(visitStart)} - ${to12hFormat(visitEnd)}`,
       activity: place.place_name,
       tips: place.tips || '',
       distance_from_prev: travelDist,
     });
 
-    currentTime = visitEnd; // Update current time end after visit
+    currentTime = visitEnd;
   }
 
   return results;
@@ -2960,12 +2933,10 @@ app.post('/generate-trip-plan', async (req, res) => {
       return res.status(400).json({ error: 'Destination, days, and region_id are required' });
     }
 
-    // Connect to Places DB if not connected yet
     if (!placesDb) {
       await connectPlacesDB();
     }
 
-    // Fetch places by region_id from MongoDB
     const placesCollection = placesDb.collection('places_regions_spots');
     let placesCursor = placesCollection.find({ region_id: parseInt(region_id) });
     let places = await placesCursor.toArray();
@@ -2974,13 +2945,10 @@ app.post('/generate-trip-plan', async (req, res) => {
       return res.status(404).json({ error: 'No places found for this region_id' });
     }
 
-    // Prepare interests as array for matching
     const interestsArray = interests ? interests.split(',').map((s) => s.trim()) : [];
 
-    // Split places into days & order
     const daysPlans = splitPlacesIntoDays(places, days, interestsArray);
 
-    // Assign visit windows + travel times and curate JSON part for LLM
     let structuredDays = {};
     for (let i = 0; i < daysPlans.length; i++) {
       const dayPlan = daysPlans[i];
@@ -2988,7 +2956,6 @@ app.post('/generate-trip-plan', async (req, res) => {
       structuredDays[`day_${i + 1}`] = timedPlan;
     }
 
-    // Prepare a detailed prompt with structured data for OpenAI
     const prompt = `
 You are a helpful travel assistant. Given the JSON object below representing a trip plan with days containing places to visit with visitation time windows, distances, and tips, please generate a daily trip itinerary that:
 
@@ -3003,7 +2970,6 @@ ${JSON.stringify(structuredDays, null, 2)}
 Respond with the itinerary in plain text without markdown or special characters.
 `;
 
-    // Call OpenAI chat completion with prompt
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
